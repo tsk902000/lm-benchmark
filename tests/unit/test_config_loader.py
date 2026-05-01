@@ -101,6 +101,21 @@ def test_load_run_plan_seed_yaml() -> None:
     assert plan.models[0].hf_id == "facebook/opt-125m"
 
 
+def test_load_run_plan_baseline_vs_nvfp4() -> None:
+    """The shipped MiMo NVFP4 plan loads, validates, and wires up correctly."""
+    plan = load_run_plan(Path("configs/run_baseline_vs_nvfp4.yaml"))
+    assert plan.name == "baseline-vs-nvfp4"
+    names = {m.name for m in plan.models}
+    assert {"mimo-v2-flash", "mimo-v2.5"} <= names
+    assert plan.hardware.blackwell is True
+    assert plan.quant_recipe is not None
+    assert plan.quant_recipe.method == "nvfp4"
+    assert {"ruler", "longbench", "livecodebench"} <= set(plan.eval_suite.long_context)
+    v25 = next(m for m in plan.models if m.name == "mimo-v2.5")
+    assert v25.vllm.tensor_parallel_size == 4
+    assert v25.vllm.trust_remote_code is True
+
+
 def test_load_models_rejects_non_list(tmp_path: Path) -> None:
     p = _write(tmp_path / "models.yaml", "models:\n  not_a_list: 1\n")
     with pytest.raises(ValueError, match="expected a list of models"):
