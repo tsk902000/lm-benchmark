@@ -1,0 +1,50 @@
+# Smoke run: opt-125m, tiny prompts, no quantization.
+#
+# Single-document `RunPlan` consumable by `load_run_plan`. Designed to be
+# CPU-loadable on dev boxes (no Blackwell needed). The runner in Phase 8
+# wires this in via `lmbench run --plan configs/run_smoke.yaml`.
+
+name: smoke
+output_dir: results/smoke
+
+models:
+  - name: opt-125m-smoke
+    hf_id: facebook/opt-125m
+    expected_max_model_len: 2048
+    vllm:
+      tensor_parallel_size: 1
+      max_model_len: 1024
+      dtype: auto
+      gpu_memory_utilization: 0.5
+      enforce_eager: true
+
+workloads:
+  - name: random-tiny
+    kind: random
+    num_prompts: 32
+    concurrency: [1, 4]
+    input_len: 128
+    output_len: 32
+    seed: 0
+    warmup_prompts: 4
+
+eval_suite:
+  name: smoke-eval
+  tasks:
+    - arc_challenge
+  num_fewshot:
+    arc_challenge: 0
+  limit: 50
+  include_humaneval: false
+
+# No `quant_recipe` for the smoke plan — NVFP4 requires Blackwell. The
+# baseline-vs-NVFP4 plan (configs/run_baseline_vs_nvfp4.yaml, Phase 8) adds
+# quant_recipe + hardware.blackwell=true.
+
+hardware:
+  name: dev-cpu
+  gpu: cpu
+  blackwell: false
+  num_gpus: 1
+  default_tp_size: 1
+  max_concurrency: 8

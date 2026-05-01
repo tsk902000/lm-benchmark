@@ -1,0 +1,18 @@
+# Quantization recipes for lmbench.
+#
+# Resolved by `lmbench.config.loader.load_quant_recipe`. Maps onto
+# `QuantRecipe`. The default `nvfp4` recipe runs `nvidia-modelopt`'s
+# post-training NVFP4 flow with cnn_dailymail calibration (the
+# HANDOFF.md-locked default).
+
+quant_recipe:
+  name: nvfp4-default
+  method: nvfp4
+  output_dir: results/quantized
+  calibration:
+    dataset: cnn_dailymail
+    dataset_config: "3.0.0"
+    split: train
+    num_samples: 512
+    max_seq_len: 2048
+    seed: 0

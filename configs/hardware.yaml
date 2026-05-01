@@ -1,0 +1,33 @@
+# Target hardware profiles.
+#
+# Resolved by `lmbench.config.loader.load_hardware`. Maps onto
+# `HardwareProfile`. The active profile is the top-level `hardware:` block;
+# alternate profiles are kept commented as a reference rather than parsed,
+# since the loader assumes a single active profile per file.
+
+hardware:
+  name: b300-tp2
+  gpu: B300
+  blackwell: true
+  num_gpus: 2
+  default_tp_size: 2
+  max_concurrency: 128
+
+# Reference profiles (uncomment one and comment the active block above to
+# switch). Validation rules: default_tp_size <= num_gpus.
+#
+# hardware:
+#   name: h100-tp2
+#   gpu: H100
+#   blackwell: false
+#   num_gpus: 2
+#   default_tp_size: 2
+#   max_concurrency: 128
+#
+# hardware:
+#   name: dev-cpu
+#   gpu: cpu
+#   blackwell: false
+#   num_gpus: 1
+#   default_tp_size: 1
+#   max_concurrency: 8

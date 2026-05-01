@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Test / type / lint caches
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project: large artifacts and per-run outputs
+results/
+reports/
+hf_cache/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.gguf
+
+# uv
+uv.lock.bak

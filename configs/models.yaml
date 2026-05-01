@@ -1,0 +1,41 @@
+# Model registry for lmbench.
+#
+# Resolved by `lmbench.config.loader.load_models`. Each entry maps to
+# `lmbench.config.schema.ModelEntry`.
+#
+# Notes:
+# - `hf_id` is the HuggingFace repo id used by `vllm serve`.
+# - `gated: true` means HF gating requires `HF_TOKEN` in the env.
+# - `vllm.tensor_parallel_size` may be inherited from a hardware profile via
+#   `apply_hardware_defaults` if left at 1.
+
+models:
+  - name: opt-125m-smoke
+    hf_id: facebook/opt-125m
+    notes: "Tiny model for CI smoke runs. CPU-loadable; no gating."
+    expected_max_model_len: 2048
+    vllm:
+      tensor_parallel_size: 1
+      max_model_len: 2048
+      dtype: auto
+      gpu_memory_utilization: 0.5
+      enforce_eager: true
+
+  - name: llama-3.1-8b-instruct
+    hf_id: meta-llama/Llama-3.1-8B-Instruct
+    gated: true
+    expected_max_model_len: 131072
+    vllm:
+      tensor_parallel_size: 2
+      max_model_len: 8192
+      dtype: bfloat16
+      gpu_memory_utilization: 0.9
+
+  - name: qwen2.5-7b-instruct
+    hf_id: Qwen/Qwen2.5-7B-Instruct
+    expected_max_model_len: 32768
+    vllm:
+      tensor_parallel_size: 2
+      max_model_len: 8192
+      dtype: bfloat16
+      gpu_memory_utilization: 0.9

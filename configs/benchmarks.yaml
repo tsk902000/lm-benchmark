@@ -1,0 +1,51 @@
+# Performance workloads + quality eval suite.
+#
+# Resolved by `lmbench.config.loader.load_workloads` and `load_eval_suite`.
+# Maps onto `WorkloadSpec` and `EvalSuite`.
+
+workloads:
+  # Standard short-prompt sweep — the default perf scenario.
+  - name: random-short
+    kind: random
+    num_prompts: 1000
+    concurrency: [1, 8, 32, 128]
+    input_len: 1024
+    output_len: 256
+    seed: 0
+    warmup_prompts: 16
+
+  # Long-context perf workload. Token-budget guard lives in the workload
+  # generator (Phase 4) — bumps to higher input_len require care.
+  - name: random-long
+    kind: longctx
+    num_prompts: 200
+    concurrency: [1, 4, 16]
+    input_len: 16384
+    output_len: 1024
+    seed: 0
+    warmup_prompts: 8
+
+  # ShareGPT realistic-distribution workload (Phase 4 loader).
+  - name: sharegpt-default
+    kind: sharegpt
+    num_prompts: 500
+    concurrency: [1, 8, 32]
+    seed: 0
+    warmup_prompts: 16
+
+eval_suite:
+  name: default
+  tasks:
+    - mmlu
+    - gsm8k
+    - arc_challenge
+    - hellaswag
+    - truthfulqa_mc2
+  num_fewshot:
+    mmlu: 5
+    gsm8k: 5
+    arc_challenge: 25
+    hellaswag: 10
+    truthfulqa_mc2: 0
+  long_context: []
+  include_humaneval: false
