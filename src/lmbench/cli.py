@@ -81,9 +81,40 @@ def compare(
 @app.command()
 def run(
     plan: Annotated[Path, typer.Option("--plan", "-p", help="Path to a run-plan YAML.")],
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Override the plan's output directory."),
+    ] = None,
+    skip_quality: Annotated[
+        bool, typer.Option("--skip-quality", help="Skip lm-eval quality benchmarks.")
+    ] = False,
+    skip_quantize: Annotated[
+        bool, typer.Option("--skip-quantize", help="Skip the NVFP4 candidate stage.")
+    ] = False,
 ) -> None:
-    """Execute the full pipeline: serve → bench → quantize → serve → bench → compare."""
-    console.print(f"[yellow]run[/] (stub) plan={plan}")
+    """Execute the full pipeline: serve, bench, quantize, re-serve, bench, compare."""
+    from lmbench.runner import run_plan_from_file
+
+    result = run_plan_from_file(
+        plan,
+        output_dir=output,
+        skip_quality=skip_quality,
+        skip_quantize=skip_quantize,
+    )
+    console.print(
+        f"[green]run[/] complete: plan={result.plan_name} "
+        f"output_dir={result.output_dir} models={len(result.models)}"
+    )
+    for m in result.models:
+        flag = (
+            "[red]REGRESSION[/]"
+            if m.comparison.any_regression
+            else "[green]ok[/]"
+        )
+        console.print(
+            f"  - {m.model_name}: {flag} "
+            f"md={m.report_md} html={m.report_html}"
+        )
 
 
 if __name__ == "__main__":

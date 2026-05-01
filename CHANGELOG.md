@@ -28,3 +28,34 @@ All notable changes to this project will be documented in this file.
   behind `--gpu` / `--blackwell` flags or `LMBENCH_GPU=1` / `LMBENCH_BLACKWELL=1`
   env vars.
 - README: from-clone quickstart, GPU host quickstart, common-commands table.
+- Phase 4: perf benchmarks. `bench/metrics.py` (RequestSample, PerfSummary,
+  percentile, latency_stats, summarize, bootstrap_ci), `bench/workloads.py`
+  (random / longctx / sharegpt prompt generators with deterministic seeded
+  sampling), `bench/perf.py` (async streaming OpenAI-compatible
+  /v1/completions driver with concurrency semaphore, warmup split, GPU
+  sampler integration), `utils/gpu.py` (pynvml sampler thread with no-op
+  fallback). 39 new unit tests.
+- Phase 5: quality benchmarks. `bench/quality.py` wraps `lm_eval --model
+  local-completions`, parses `results_*.json` into a normalized
+  `QualityResult`, picks a primary metric per task (`acc_norm` > `acc` >
+  `exact_match` > `f1` > ...). 11 new unit tests.
+- Phase 6: NVFP4 quantization. `quantize/calibration.py` (cnn_dailymail
+  loader with lazy `datasets` import), `quantize/modelopt_nvfp4.py`
+  (`mtq.quantize` + `save_pretrained` + sidecar `lmbench_quant_meta.json`),
+  `quantize/verify.py` (post-quantization sanity probe rejecting empty /
+  degenerate completions). 21 new unit tests.
+- Phase 7: compare + report. `compare/differ.py` (MetricDelta, diff_perf,
+  diff_quality, ComparisonReport with regression flags),
+  `compare/stats.py` (delta bootstrap CI), `report/markdown.py` (side-by-
+  side tables with regression banner), `report/html.py` (Plotly tables
+  with plain-HTML fallback). 18 new unit tests.
+- Phase 8: runner + CLI wiring. `runner/env.py` (env.json snapshot:
+  nvidia-smi, git SHA, package versions), `runner/pipeline.py`
+  (capture env -> serve baseline -> bench -> quantize -> verify -> serve
+  candidate -> bench -> compare -> report). `lmbench run --plan ...` is
+  now wired through to the real pipeline. 8 new unit tests.
+- Phase 9: documentation. `docs/PRD.md`, `docs/architecture.md`,
+  `docs/nvfp4_workflow.md`, `docs/b300_setup.md`, `docs/troubleshooting.md`.
+
+Test status: **203 unit tests + 1 GPU integration smoke (skipped without
+`--gpu`)**, **90% coverage**, ruff clean, mypy 0 issues.

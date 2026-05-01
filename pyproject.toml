@@ -73,7 +73,17 @@ files = ["src/lmbench"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["pynvml.*", "vllm.*", "modelopt.*", "lm_eval.*", "pandas.*", "plotly.*"]
+module = [
+    "pynvml.*",
+    "vllm.*",
+    "modelopt.*",
+    "lm_eval.*",
+    "pandas.*",
+    "plotly.*",
+    "torch.*",
+    "transformers.*",
+    "datasets.*",
+]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

@@ -28,7 +28,7 @@ Reproducible Python harness that, for each configured LLM:
 | Package manager | `uv` |
 | Python | 3.11 |
 
-## Status — Phase 3 complete
+## Status — Phases 1-9 complete (harness done, awaiting first B300 run)
 
 Phase 1 landed (project scaffolding, typer CLI stubs, ruff/mypy/pytest harness, 13 tests, 100% coverage).
 
@@ -72,14 +72,42 @@ Phase 3 landed:
 - `tests/conftest.py` — `--gpu` / `--blackwell` flags + `LMBENCH_GPU` /
   `LMBENCH_BLACKWELL` env vars gate GPU/Blackwell tests.
 
-Test status: **105 tests** (104 unit + 1 GPU smoke; smoke skipped without
-`--gpu`), **97.5% coverage**, ruff clean, mypy 0 issues (verified on
-Linux WSL2 with `uv 0.7.3` + Python 3.11.11).
+Phase 4 landed: `bench/metrics.py` (TTFT/ITL/TPOT + percentile + bootstrap_ci),
+`bench/workloads.py` (random / longctx / sharegpt deterministic generators),
+`bench/perf.py` (async streaming OpenAI-compatible driver), `utils/gpu.py`
+(pynvml sampler thread).
 
-Known limitation: vLLM internally spawns its own EngineCore subprocesses
-that may end up in their own session, so `os.killpg` on the spawn pgid
-does not always reap them. Phase 8's runner will add an explicit reap
-sweep (track all child PIDs from `psutil.Process(handle.pid).children`).
+Phase 5 landed: `bench/quality.py` wraps `lm_eval --model local-completions`,
+parses `results_*.json` into `QualityResult`, picks a primary metric per task.
+
+Phase 6 landed: `quantize/calibration.py` (cnn_dailymail loader),
+`quantize/modelopt_nvfp4.py` (mtq.quantize + save_pretrained + sidecar
+metadata), `quantize/verify.py` (sanity probe).
+
+Phase 7 landed: `compare/differ.py` + `compare/stats.py` for deltas with
+regression flags + bootstrap CI; `report/markdown.py` + `report/html.py`
+for Markdown and Plotly HTML output (with plain-HTML fallback).
+
+Phase 8 landed: `runner/env.py` (env.json snapshot), `runner/pipeline.py`
+(full per-model orchestration). `lmbench run --plan ...` is wired through.
+
+Phase 9 landed: `docs/PRD.md`, `docs/architecture.md`,
+`docs/nvfp4_workflow.md`, `docs/b300_setup.md`, `docs/troubleshooting.md`.
+
+Test status: **203 unit + 1 GPU integration smoke (skipped without --gpu)**,
+**90% coverage**, ruff clean, mypy 0 issues (verified on Linux WSL2 with
+`uv 0.7.3` + Python 3.11.11).
+
+Known limitations:
+- vLLM internally spawns EngineCore subprocesses in a fresh session;
+  `os.killpg` on the spawn pgid does not always reap them. The runner
+  should be extended with a `psutil`-based child-walk sweep on teardown.
+- `nvfp4_llmcompressor` recipe is reserved in the schema but not wired.
+- `configs/run_baseline_vs_nvfp4.yaml` is referenced in README but not
+  shipped (write it once the model registry stabilizes).
+- First real B300 run still needs to land. Once it does, pin the
+  `(vllm, nvidia-modelopt, transformers, driver)` quartet in
+  `pyproject.toml` and `docs/b300_setup.md`.
 
 ## Resuming in WSL2
 
