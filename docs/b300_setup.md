@@ -10,11 +10,12 @@ This is the recipe for bringing up an NVIDIA B300 (Blackwell Ultra) host so it c
 
 ## Step 1 - Driver and CUDA
 
-Install a recent enough NVIDIA driver to recognize Blackwell.
+Install a recent enough NVIDIA driver to recognize Blackwell / Blackwell Ultra.
 
 ```bash
 nvidia-smi
-# expect: Driver Version >= 555.x, CUDA Version >= 12.4
+# expect a modern data-center driver with CUDA 12.9+ visible; CUDA 13 is the
+# preferred target for B300/GB300 vLLM builds.
 ```
 
 If `nvidia-smi` does not list a `B300` (or whichever Blackwell SKU you have), the driver is the problem. Do not attempt to skip ahead.
@@ -60,7 +61,14 @@ This boots `facebook/opt-125m` via the real `vllm serve` subprocess and round-tr
 uv run lmbench run --plan configs/run_smoke.yaml --skip-quantize
 ```
 
-The smoke plan runs `facebook/opt-125m` only; once that produces a baseline report, swap in `configs/run_baseline_vs_nvfp4.yaml` (authored against your real model registry) to exercise the full NVFP4 cycle.
+The smoke plan runs `facebook/opt-125m` only. Once that produces a baseline report:
+
+```bash
+# Attempt the V2.5 public-FP8 baseline vs NVFP4 path on 2x B300.
+uv run lmbench run --plan configs/run_mimo_v2_5_nvfp4.yaml
+```
+
+MiMo-V2.5 currently depends on fast-moving vLLM support; use the MiMo-specific or nightly vLLM image recommended by the current vLLM recipe rather than assuming a generic old wheel will work. If the baseline stage fails on your exact stack, rerun the same plan with `--skip-baseline` and compare the candidate against a separately captured public-FP8 baseline.
 
 ## Known-good versions
 

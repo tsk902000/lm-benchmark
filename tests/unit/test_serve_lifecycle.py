@@ -59,6 +59,8 @@ def _isolate_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setattr(vs.shutil, "which", lambda x: x)
     monkeypatch.setattr(vs, "wait_for_ready", lambda *_a, **_kw: None)
     monkeypatch.setattr(lc, "wait_for_ready", lambda *_a, **_kw: None)
+    monkeypatch.setattr(vs.sys, "platform", "linux")
+    monkeypatch.setattr(vs.signal, "SIGKILL", 9, raising=False)
 
     def fake_killpg(pgid: int, sig: int) -> None:
         for fake in _FakePopen.instances:
@@ -73,8 +75,8 @@ def _isolate_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
                 fake.returncode = -9
             return
 
-    monkeypatch.setattr(vs.os, "killpg", fake_killpg)
-    monkeypatch.setattr(vs.os, "getpgid", lambda pid: pid)
+    monkeypatch.setattr(vs.os, "killpg", fake_killpg, raising=False)
+    monkeypatch.setattr(vs.os, "getpgid", lambda pid: pid, raising=False)
     monkeypatch.setattr(vs.time, "sleep", lambda _s: None)
     yield
 

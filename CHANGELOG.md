@@ -41,7 +41,8 @@ All notable changes to this project will be documented in this file.
   `exact_match` > `f1` > ...). 11 new unit tests.
 - Phase 6: NVFP4 quantization. `quantize/calibration.py` (cnn_dailymail
   loader with lazy `datasets` import), `quantize/modelopt_nvfp4.py`
-  (`mtq.quantize` + `save_pretrained` + sidecar `lmbench_quant_meta.json`),
+  (`mtq.quantize` + ModelOpt unified HF export via `export_hf_checkpoint`
+  + `hf_quant_config.json` check + sidecar `lmbench_quant_meta.json`),
   `quantize/verify.py` (post-quantization sanity probe rejecting empty /
   degenerate completions). 21 new unit tests.
 - Phase 7: compare + report. `compare/differ.py` (MetricDelta, diff_perf,
@@ -57,8 +58,9 @@ All notable changes to this project will be documented in this file.
 - Phase 9: documentation. `docs/PRD.md`, `docs/architecture.md`,
   `docs/nvfp4_workflow.md`, `docs/b300_setup.md`, `docs/troubleshooting.md`.
 
-Test status: **203 unit tests + 1 GPU integration smoke (skipped without
-`--gpu`)**, **90% coverage**, ruff clean, mypy 0 issues.
+Test status after the current verification pass: **216 passed + 1 GPU
+integration smoke skipped because `vllm` is not installed on this Windows
+host**, **90% coverage**, ruff clean, mypy 0 issues.
 
 ### Phase 5+ — long-context + coding tasks via lm-eval
 
@@ -70,8 +72,14 @@ Test status: **203 unit tests + 1 GPU integration smoke (skipped without
   `lm_eval --model local-completions` driver as the standard tasks; whether
   each one runs depends on the installed lm-eval version supporting that
   task (otherwise lm-eval surfaces a clear error).
-- 4 new unit tests covering merge dedup, argv inclusion, and seed-config
-  wiring. Test suite at 207 unit tests, 90% coverage.
+- Quality suites with mixed few-shot settings are split into multiple
+  `lm_eval` invocations so task-level few-shot counts are preserved instead
+  of applying the largest value to every task.
+- Perf artifacts now include GPU telemetry summaries, and the runner passes
+  a `GPUSampler` into workload execution.
+- `lmbench compare` now reads saved stage artifacts (`perf/*.json` and
+  `quality/quality_summary.json`) and writes offline Markdown + HTML reports.
+- The XiaomiMiMo production plan now targets only `XiaomiMiMo/MiMo-V2.5`.
 
 Out of scope (would need separate harness modules; deferred): SWE-bench
 Verified / Pro, Terminal-Bench, tau2-bench, Aider Polyglot - these require

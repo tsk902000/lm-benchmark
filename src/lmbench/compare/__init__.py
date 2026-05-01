@@ -10,6 +10,7 @@ from .differ import (
     diff_perf,
     diff_quality,
 )
+from .offline import compare_result_dirs, load_perf_summary, load_quality_summary
 from .stats import DeltaCI, delta_bootstrap_ci, is_within_tolerance
 
 __all__ = [
@@ -18,8 +19,11 @@ __all__ = [
     "MetricDelta",
     "PerfComparison",
     "QualityComparison",
+    "compare_result_dirs",
     "delta_bootstrap_ci",
     "diff_perf",
     "diff_quality",
     "is_within_tolerance",
+    "load_perf_summary",
+    "load_quality_summary",
 ]

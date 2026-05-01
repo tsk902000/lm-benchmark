@@ -19,6 +19,7 @@ from .quality import (
     merged_task_list,
     parse_lm_eval_results,
     run_quality,
+    split_suite_by_fewshot,
 )
 from .workloads import (
     Prompt,
@@ -48,5 +49,6 @@ __all__ = [
     "percentile",
     "run_quality",
     "run_workload",
+    "split_suite_by_fewshot",
     "summarize",
 ]

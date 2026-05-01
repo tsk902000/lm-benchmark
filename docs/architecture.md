@@ -19,13 +19,14 @@ src/lmbench/
     metrics.py        # RequestSample, PerfSummary, percentile / bootstrap_ci
     workloads.py      # random / longctx / sharegpt prompt generators
     perf.py           # async streaming OpenAI-compatible /v1/completions driver
-    quality.py        # lm-eval local-completions wrapper + results parser
+    quality.py        # lm-eval wrapper, few-shot grouping, results parser
   quantize/           # NVFP4 PTQ
     calibration.py    # cnn_dailymail loader (lazy datasets import)
-    modelopt_nvfp4.py # mtq.quantize wrapper + checkpoint export
+    modelopt_nvfp4.py # mtq.quantize wrapper + unified HF checkpoint export
     verify.py         # post-quantization sanity probe
   compare/            # baseline-vs-candidate diffing
     differ.py         # MetricDelta, diff_perf, diff_quality, ComparisonReport
+    offline.py        # load saved perf/quality artifacts for CLI compare
     stats.py          # bootstrap CI on (baseline, candidate) per-sample deltas
   report/             # Markdown + Plotly HTML rendering
     markdown.py       # render_markdown / write_markdown

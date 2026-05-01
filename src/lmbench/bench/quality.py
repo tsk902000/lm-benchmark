@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -145,6 +146,32 @@ def merged_task_list(suite: EvalSuite) -> tuple[str, ...]:
     return tuple(out)
 
 
+def split_suite_by_fewshot(suite: EvalSuite) -> tuple[EvalSuite, ...]:
+    """Split a suite into lm-eval calls that each have one few-shot value.
+
+    The lm-eval CLI accepts one global `--num_fewshot`, while our config stores
+    task-level values. Grouping preserves those task-level settings instead of
+    accidentally applying the largest value to every task.
+    """
+    groups: OrderedDict[int | None, list[str]] = OrderedDict()
+    for task in merged_task_list(suite):
+        groups.setdefault(suite.num_fewshot.get(task), []).append(task)
+
+    out: list[EvalSuite] = []
+    for fewshot, tasks in groups.items():
+        num_fewshot = {} if fewshot is None else {task: fewshot for task in tasks}
+        out.append(
+            EvalSuite(
+                name=suite.name,
+                tasks=tuple(tasks),
+                num_fewshot=num_fewshot,
+                limit=suite.limit,
+                include_humaneval=suite.include_humaneval,
+            )
+        )
+    return tuple(out)
+
+
 def build_lm_eval_args(
     *,
     base_url: str,
@@ -175,10 +202,13 @@ def build_lm_eval_args(
     if suite.limit is not None:
         args += ["--limit", str(suite.limit)]
     if suite.num_fewshot:
-        # lm-eval accepts a single `--num_fewshot N` (applied to all tasks).
-        # We collapse to the max requested value to keep tasks comparable;
-        # callers needing per-task control should split the suite.
-        args += ["--num_fewshot", str(max(suite.num_fewshot.values()))]
+        values = set(suite.num_fewshot.values())
+        if len(values) != 1:
+            raise ValueError(
+                "lm-eval accepts one --num_fewshot per invocation; "
+                "call split_suite_by_fewshot() before building args"
+            )
+        args += ["--num_fewshot", str(next(iter(values)))]
     return args
 
 
@@ -190,6 +220,30 @@ def _find_results_json(output_dir: Path) -> Path:
             f"no results_*.json under {output_dir}; lm-eval may have failed"
         )
     return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
+def _merge_quality_results(
+    parts: tuple[QualityResult, ...],
+    *,
+    suite_name: str,
+    served_model_name: str,
+    raw_results_path: Path,
+) -> QualityResult:
+    """Combine scores from multiple lm-eval invocations."""
+    scores: list[TaskScore] = []
+    seen: set[str] = set()
+    for part in parts:
+        for score in part.scores:
+            if score.task in seen:
+                continue
+            seen.add(score.task)
+            scores.append(score)
+    return QualityResult(
+        suite_name=suite_name,
+        served_model_name=served_model_name,
+        scores=tuple(scores),
+        raw_results_path=raw_results_path,
+    )
 
 
 def run_quality(
@@ -219,31 +273,45 @@ def run_quality(
         resolved = executable
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    argv = build_lm_eval_args(
-        base_url=base_url,
-        served_model_name=served_model_name,
-        suite=suite,
-        output_dir=output_dir,
-        executable=resolved,
-    )
-
-    proc = subprocess.run(
-        argv,
-        capture_output=True,
-        text=True,
-        env=env,
-        timeout=timeout_s,
-        check=False,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"lm_eval exited with code {proc.returncode}\n"
-            f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    parts: list[QualityResult] = []
+    groups = split_suite_by_fewshot(suite)
+    for idx, group in enumerate(groups):
+        group_output_dir = output_dir if len(groups) == 1 else output_dir / f"group_{idx:02d}"
+        group_output_dir.mkdir(parents=True, exist_ok=True)
+        argv = build_lm_eval_args(
+            base_url=base_url,
+            served_model_name=served_model_name,
+            suite=group,
+            output_dir=group_output_dir,
+            executable=resolved,
         )
 
-    results_path = _find_results_json(output_dir)
-    parsed = parse_lm_eval_results(
-        results_path, suite_name=suite.name, served_model_name=served_model_name
+        proc = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=timeout_s,
+            check=False,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"lm_eval exited with code {proc.returncode}\n"
+                f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+            )
+
+        results_path = _find_results_json(group_output_dir)
+        parts.append(
+            parse_lm_eval_results(
+                results_path, suite_name=suite.name, served_model_name=served_model_name
+            )
+        )
+
+    parsed = _merge_quality_results(
+        tuple(parts),
+        suite_name=suite.name,
+        served_model_name=served_model_name,
+        raw_results_path=parts[0].raw_results_path if len(parts) == 1 else output_dir,
     )
     summary_path = output_dir / "quality_summary.json"
     summary_path.write_text(json.dumps(parsed.as_dict(), indent=2), encoding="utf-8")

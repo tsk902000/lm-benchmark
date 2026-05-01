@@ -1,9 +1,4 @@
-"""lmbench CLI entry point.
-
-Phase 1: subcommand stubs that validate argument wiring. Real implementations
-land in subsequent phases (serve in Phase 3, bench in Phase 4/5, quantize in
-Phase 6, compare in Phase 7, run in Phase 8).
-"""
+"""lmbench CLI entry point."""
 
 from __future__ import annotations
 
@@ -73,9 +68,14 @@ def compare(
     ] = Path("reports"),
 ) -> None:
     """Diff two run-results directories and emit a side-by-side report."""
-    console.print(
-        f"[yellow]compare[/] (stub) baseline={baseline} candidate={candidate} output={output}"
-    )
+    from lmbench.compare import compare_result_dirs
+    from lmbench.report import write_html, write_markdown
+
+    report = compare_result_dirs(baseline, candidate)
+    md = write_markdown(report, output / "report.md")
+    html = write_html(report, output / "report.html")
+    flag = "[red]REGRESSION[/]" if report.any_regression else "[green]ok[/]"
+    console.print(f"[green]compare[/] complete: {flag} md={md} html={html}")
 
 
 @app.command()
@@ -96,10 +96,11 @@ def run(
         typer.Option(
             "--skip-baseline",
             help=(
-                "Skip the bf16 baseline phase (use when the host cannot fit "
-                "bf16 weights; e.g. a 310B model on 2x B300). The run still "
-                "quantizes and measures the candidate; comparison report "
-                "will be empty since there is no baseline to diff against."
+                "Skip the baseline serving phase (use when the host cannot "
+                "fit the public checkpoint weights; e.g. a 310B model on "
+                "2x B300). The run still quantizes and measures the "
+                "candidate; comparison report will be empty since there is "
+                "no baseline to diff against."
             ),
         ),
     ] = False,

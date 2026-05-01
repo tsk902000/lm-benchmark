@@ -1,8 +1,7 @@
 # Smoke run: opt-125m, tiny prompts, no quantization.
 #
 # Single-document `RunPlan` consumable by `load_run_plan`. Designed to be
-# CPU-loadable on dev boxes (no Blackwell needed). The runner in Phase 8
-# wires this in via `lmbench run --plan configs/run_smoke.yaml`.
+# CPU-loadable on dev boxes (no Blackwell needed).
 
 name: smoke
 output_dir: results/smoke
@@ -37,9 +36,8 @@ eval_suite:
   limit: 50
   include_humaneval: false
 
-# No `quant_recipe` for the smoke plan — NVFP4 requires Blackwell. The
-# baseline-vs-NVFP4 plan (configs/run_baseline_vs_nvfp4.yaml, Phase 8) adds
-# quant_recipe + hardware.blackwell=true.
+# No `quant_recipe` for the smoke plan - NVFP4 requires Blackwell. The
+# MiMo-V2.5 plan adds quant_recipe + hardware.blackwell=true.
 
 hardware:
   name: dev-cpu

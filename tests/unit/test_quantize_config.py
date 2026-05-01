@@ -13,11 +13,11 @@ from lmbench.quantize import (
     quantized_output_dir,
     safe_dirname,
 )
-from lmbench.quantize.modelopt_nvfp4 import _select_modelopt_config
+from lmbench.quantize.modelopt_nvfp4 import _model_input_device, _select_modelopt_config
 
 
 def test_safe_dirname_replaces_special_chars() -> None:
-    assert safe_dirname("Llama-3.1/8B Instruct") == "Llama-3.1_8B_Instruct"
+    assert safe_dirname("MiMo-V2.5/FP8 Checkpoint") == "MiMo-V2.5_FP8_Checkpoint"
     assert safe_dirname("a:b?c") == "a_b_c"
 
 
@@ -78,6 +78,24 @@ def test_select_modelopt_config_llmcompressor_not_implemented() -> None:
 def test_select_modelopt_config_unknown_method() -> None:
     with pytest.raises(ValueError, match="unknown quantization method"):
         _select_modelopt_config("int4", object())
+
+
+def test_model_input_device_uses_explicit_device() -> None:
+    class _Model:
+        device = "cuda:1"
+
+    assert _model_input_device(_Model()) == "cuda:1"
+
+
+def test_model_input_device_falls_back_to_first_parameter() -> None:
+    class _Param:
+        device = "cuda:0"
+
+    class _Model:
+        def parameters(self) -> object:
+            return iter((_Param(),))
+
+    assert _model_input_device(_Model()) == "cuda:0"
 
 
 def test_quantized_checkpoint_vllm_id() -> None:

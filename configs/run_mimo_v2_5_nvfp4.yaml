@@ -1,0 +1,99 @@
+# MiMo-V2.5 public-FP8-checkpoint-vs-NVFP4 plan for a 2x B300 host.
+#
+# Run this with:
+#   uv run lmbench run --plan configs/run_mimo_v2_5_nvfp4.yaml
+#
+# If the public FP8 baseline fails to serve on your exact 2x B300 software
+# stack, rerun with --skip-baseline to collect candidate-only NVFP4 numbers.
+#
+# Important: XiaomiMiMo/MiMo-V2.5 is published as an FP8 checkpoint. This plan
+# attempts to produce and benchmark an NVFP4 candidate from that public
+# checkpoint. It does not measure BF16->NVFP4 loss unless you replace the model
+# with a true BF16 checkpoint and run a matching baseline on a larger host.
+#
+# Current vLLM recipes list MiMo-V2.5 as requiring a MiMo-specific/nightly vLLM
+# image, and the official example uses TP=4 on H200-class memory. TP=2 on 2x
+# B300 is memory-plausible but still needs first real validation.
+
+name: mimo-v2-5-fp8-vs-nvfp4
+output_dir: results/mimo-v2-5-fp8-vs-nvfp4
+
+models:
+  - name: mimo-v2.5
+    hf_id: XiaomiMiMo/MiMo-V2.5
+    gated: false
+    notes: >
+      Public FP8 sparse MoE checkpoint (310B / 15B active), hybrid SWA+GA
+      attention with sinks, multimodal ViT + audio encoders. TP=2 on 2x B300
+      should be treated as an unvalidated public-FP8 baseline-vs-NVFP4 attempt.
+    expected_max_model_len: 1048576
+    vllm:
+      tensor_parallel_size: 2
+      max_model_len: 32768
+      dtype: auto
+      gpu_memory_utilization: 0.9
+      kv_cache_dtype: fp8
+      trust_remote_code: true
+      enable_prefix_caching: false
+      extra_args:
+        generation-config: vllm
+        max-num-batched-tokens: "32768"
+
+workloads:
+  - name: random-short
+    kind: random
+    num_prompts: 500
+    concurrency: [1, 8, 32]
+    input_len: 1024
+    output_len: 256
+    seed: 0
+    warmup_prompts: 16
+
+  - name: random-long
+    kind: longctx
+    num_prompts: 100
+    concurrency: [1, 4]
+    input_len: 16384
+    output_len: 1024
+    seed: 0
+    warmup_prompts: 8
+
+eval_suite:
+  name: mimo-v2-5-suite
+  tasks:
+    - mmlu
+    - gsm8k
+    - arc_challenge
+    - hellaswag
+    - truthfulqa_mc2
+  num_fewshot:
+    mmlu: 5
+    gsm8k: 5
+    arc_challenge: 25
+    hellaswag: 10
+    truthfulqa_mc2: 0
+  long_context:
+    - ruler
+    - longbench
+    - livecodebench
+  include_humaneval: false
+
+quant_recipe:
+  name: nvfp4-default
+  method: nvfp4
+  output_dir: results/quantized
+  calibration:
+    dataset: cnn_dailymail
+    dataset_config: "3.0.0"
+    split: train
+    num_samples: 512
+    max_seq_len: 2048
+    seed: 0
+
+hardware:
+  name: b300-tp2
+  gpu: B300
+  blackwell: true
+  num_gpus: 2
+  default_tp_size: 2
+  max_concurrency: 128

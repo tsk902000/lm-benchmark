@@ -7,7 +7,7 @@ For each configured model, `lmbench` will:
 1. Serve the baseline checkpoint via vLLM (online HTTP, OpenAI-compatible).
 2. Run **performance benchmarks** (TTFT, ITL, TPOT, throughput, GPU memory) at a sweep of concurrencies.
 3. Run **quality benchmarks** (MMLU, GSM8K, ARC-C, HellaSwag, TruthfulQA + RULER, LongBench v2, LiveCodeBench) via `lm-eval --model local-completions`.
-4. Quantize the model to **NVFP4** using NVIDIA TensorRT Model Optimizer (`mtq.quantize` + `cnn_dailymail` x 512 calibration).
+4. Quantize the model to **NVFP4** using NVIDIA TensorRT Model Optimizer (`mtq.quantize` + unified HF export + `cnn_dailymail` x 512 starter calibration).
 5. Re-serve the quantized checkpoint and re-run the same benchmarks.
 6. Emit a side-by-side comparison report (Markdown + interactive Plotly HTML) with regression flags.
 
@@ -47,21 +47,21 @@ uv run pytest --gpu
 # Pure-baseline smoke (CPU-loadable opt-125m, no NVFP4)
 uv run lmbench run --plan configs/run_smoke.yaml --skip-quantize
 
-# Full baseline -> NVFP4 -> compare against MiMo-V2-Flash on 2x B300
-uv run lmbench run --plan configs/run_baseline_vs_nvfp4.yaml
+# Public-FP8-checkpoint -> NVFP4 attempt against MiMo-V2.5 on 2x B300
+uv run lmbench run --plan configs/run_mimo_v2_5_nvfp4.yaml
 ```
 
 > The `[gpu]` extra (vllm, lm-eval, transformers, pynvml) and `[quant]` extra (nvidia-modelopt) are Linux/CUDA-only. They are isolated in `pyproject.toml [project.optional-dependencies]` precisely so the dev path stays cross-platform.
 
-### 2x B300 + 310B model (MiMo-V2.5): use `--skip-baseline`
+### 2x B300 + MiMo-V2.5
 
-bf16 MiMo-V2.5 (~620 GB) does not fit 2× B300 HBM (576 GB). NVFP4 (~155 GB) does. Run NVFP4-only and compare quality offline against `docs/published_baselines/mimo_v2_5.md`:
+The public MiMo-V2.5 checkpoint is already FP8, so this is not a BF16 baseline-vs-NVFP4 run. On a 2x B300 host, try the public-FP8-checkpoint-vs-NVFP4 plan first:
 
 ```bash
-uv run lmbench run --plan configs/run_baseline_vs_nvfp4.yaml --skip-baseline
+uv run lmbench run --plan configs/run_mimo_v2_5_nvfp4.yaml
 ```
 
-For a rigorous same-hardware A/B, rent a 4+ B300 / 8x H200 host once, capture the baseline JSON, then come back to your 2× B300 for NVFP4 and use `lmbench compare --baseline <dir> --candidate <dir>` offline.
+This TP=2 setup is memory-plausible but not validated in this repo yet; the current vLLM recipe uses a MiMo-specific/nightly image and TP=4 on H200-class memory. If the baseline fails to serve on your exact stack, rerun with `--skip-baseline` to collect NVFP4 candidate-only data and compare against a separately captured FP8 baseline or the published references in `docs/published_baselines/mimo_v2_5.md`.
 
 ## Common commands
 
@@ -79,8 +79,8 @@ For a rigorous same-hardware A/B, rent a 4+ B300 / 8x H200 host once, capture th
 | `uv run lmbench run --plan <plan.yaml>` | Run the full pipeline. |
 | `uv run lmbench run --plan <plan.yaml> --skip-quality` | Skip lm-eval; perf only. |
 | `uv run lmbench run --plan <plan.yaml> --skip-quantize` | Baseline only; no NVFP4 stage. |
-| `uv run lmbench run --plan <plan.yaml> --skip-baseline` | NVFP4 only; for hosts that can't fit bf16 weights. |
-| `uv run lmbench compare --baseline <dir> --candidate <dir> -o <reports>` | Diff two prior result directories offline. |
+| `uv run lmbench run --plan <plan.yaml> --skip-baseline` | NVFP4 only; for hosts that can't fit the baseline checkpoint. |
+| `uv run lmbench compare --baseline <dir> --candidate <dir> -o <reports>` | Diff two prior stage directories offline, such as `<model>/baseline` and `<model>/quantized`. |
 
 GPU tests can also be enabled with `LMBENCH_GPU=1 uv run pytest`. Blackwell-only tests use `--blackwell` or `LMBENCH_BLACKWELL=1`.
 
@@ -95,7 +95,7 @@ configs/
 ├── quantization.yaml             # QuantRecipe (NVFP4 default, cnn_dailymail x 512 calibration)
 ├── hardware.yaml                 # HardwareProfile (B300 TP=2 by default)
 ├── run_smoke.yaml                # CPU-loadable opt-125m smoke (no NVFP4)
-└── run_baseline_vs_nvfp4.yaml    # MiMo-V2-Flash + V2.5 plan for 2x B300 (NVFP4 + FP8 KV cache)
+└── run_mimo_v2_5_nvfp4.yaml      # MiMo-V2.5 public FP8 checkpoint vs NVFP4 attempt
 ```
 
 `${VAR}` and `${VAR:-default}` are interpolated from the environment at load time. Required vars without a default raise loudly.
@@ -105,7 +105,7 @@ configs/
 hf_id: ${HF_MODEL:-facebook/opt-125m}
 ```
 
-Set `HF_TOKEN` in `.env` (template at `.env.example`) for gated models like `meta-llama/Llama-3.1-8B-Instruct`.
+Set `HF_TOKEN` in `.env` (template at `.env.example`) if you later add gated Hugging Face models.
 
 ### Long-context + coding tasks
 
@@ -156,7 +156,7 @@ summary.md                      one-page session summary at the repo root
 | 8 | Runner + CLI wiring (`--skip-quality`, `--skip-quantize`, `--skip-baseline`) | ✅ |
 | 9 | Documentation | ✅ |
 
-**Tests:** 210 unit + 1 GPU integration smoke (skipped without `--gpu`). 90% coverage. ruff and mypy strict clean. Verified on Linux WSL2 with `uv 0.7.3` + Python 3.11.11.
+**Tests:** 216 passed + 1 GPU integration smoke skipped because `vllm` is not on this Windows host. 90% coverage. ruff and mypy clean. No B300/GPU benchmark has been run in this workspace.
 
 **Up next:** first real B300 run. Once that lands, pin the `(vllm, nvidia-modelopt, transformers, driver)` quartet in `pyproject.toml` and `docs/b300_setup.md`.
 

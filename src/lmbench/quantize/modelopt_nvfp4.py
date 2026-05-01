@@ -2,11 +2,12 @@
 
 This module wraps the modelopt `mtq.quantize` flow:
 
-1. Load the HF baseline checkpoint with `transformers`.
+1. Load the HF source checkpoint with `transformers`.
 2. Load calibration data (default: cnn_dailymail x 512 samples).
 3. Run `mtq.quantize(model, NVFP4_DEFAULT_CFG, forward_loop=...)`.
-4. Export the quantized model in vLLM-consumable HF format via
-   `model.save_pretrained` plus a sidecar `lmbench_quant_meta.json`.
+4. Export the quantized model in vLLM-consumable unified HF format via
+   `modelopt.torch.export.export_hf_checkpoint` plus a sidecar
+   `lmbench_quant_meta.json`.
 
 The third-party imports (`torch`, `transformers`, `modelopt`) are lazy
 so the module is importable on dev boxes without the [gpu]/[quant]
@@ -37,7 +38,7 @@ class QuantizedCheckpoint:
     @property
     def vllm_id(self) -> str:
         """Path string for `vllm serve <vllm_id>` to load this checkpoint."""
-        return str(self.output_dir)
+        return self.output_dir.as_posix()
 
 
 def safe_dirname(name: str) -> str:
@@ -82,17 +83,18 @@ def _import_torch_and_transformers() -> tuple[Any, Any, Any]:
     return torch, AutoModelForCausalLM, AutoTokenizer
 
 
-def _import_modelopt() -> tuple[Any, Any]:
+def _import_modelopt() -> tuple[Any, Any, Any]:
     """Lazy modelopt import — Linux/CUDA only via the [quant] extra."""
     try:
         import modelopt.torch.quantization as mtq
+        from modelopt.torch.export import export_hf_checkpoint
         from modelopt.torch.quantization import config as mtq_config
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
             "NVFP4 quantization needs `nvidia-modelopt[all]`. "
             "Install with `uv sync --extra all` on a CUDA host."
         ) from exc
-    return mtq, mtq_config
+    return mtq, mtq_config, export_hf_checkpoint
 
 
 def _select_modelopt_config(method: str, mtq_config: Any) -> Any:
@@ -112,6 +114,14 @@ def _select_modelopt_config(method: str, mtq_config: Any) -> Any:
     raise ValueError(f"unknown quantization method: {method!r}")
 
 
+def _model_input_device(model: Any) -> Any:
+    """Choose the device that should receive calibration input tensors."""
+    device = getattr(model, "device", None)
+    if device is not None:
+        return device
+    return next(model.parameters()).device
+
+
 def quantize_to_nvfp4(
     *,
     model_entry: ModelEntry,
@@ -120,7 +130,7 @@ def quantize_to_nvfp4(
 ) -> QuantizedCheckpoint:
     """Run NVFP4 PTQ end-to-end. Returns a handle to the saved checkpoint."""
     torch, AutoModelForCausalLM, AutoTokenizer = _import_torch_and_transformers()
-    mtq, mtq_config = _import_modelopt()
+    mtq, mtq_config, export_hf_checkpoint = _import_modelopt()
 
     out_dir = output_dir or quantized_output_dir(model_entry, recipe)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -134,7 +144,7 @@ def quantize_to_nvfp4(
         model_entry.hf_id,
         revision=model_entry.revision,
         trust_remote_code=model_entry.vllm.trust_remote_code,
-        torch_dtype=torch.bfloat16,
+        torch_dtype="auto",
         device_map="auto",
     )
     model.eval()
@@ -145,15 +155,23 @@ def quantize_to_nvfp4(
     )
 
     def forward_loop(m: Any) -> None:
+        input_device = _model_input_device(m)
         with torch.no_grad():
             for batch in encoded:
-                inputs = {k: v.to(m.device) for k, v in batch.items()}
+                inputs = {k: v.to(input_device) for k, v in batch.items()}
                 m(**inputs)
 
     cfg = _select_modelopt_config(recipe.method, mtq_config)
     mtq.quantize(model, cfg, forward_loop=forward_loop)
 
-    model.save_pretrained(out_dir)
+    with torch.inference_mode():
+        export_hf_checkpoint(model, export_dir=out_dir)
+    quant_config = out_dir / "hf_quant_config.json"
+    if not quant_config.exists():
+        raise RuntimeError(
+            "ModelOpt export did not produce hf_quant_config.json; "
+            "vLLM will not detect this as a unified ModelOpt checkpoint"
+        )
     tokenizer.save_pretrained(out_dir)
     meta_path = out_dir / "lmbench_quant_meta.json"
     meta_path.write_text(

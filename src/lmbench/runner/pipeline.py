@@ -40,6 +40,7 @@ from lmbench.quantize import (
 )
 from lmbench.report import write_html, write_markdown
 from lmbench.serve import ServerHandle, serve_model
+from lmbench.utils.gpu import DeviceSummary, GPUSampler
 
 from .env import EnvCapture, capture_to_path
 
@@ -85,6 +86,11 @@ def _perf_summary_to_dict(result: PerfResult) -> dict[str, object]:
     }
 
 
+def _gpu_summary_to_dict(gpu_summary: dict[int, DeviceSummary]) -> dict[str, object]:
+    """Serialize GPU telemetry summaries for JSON artifacts."""
+    return {str(idx): asdict(summary) for idx, summary in gpu_summary.items()}
+
+
 def _save_perf_result(result: PerfResult, target_dir: Path) -> Path:
     """Persist a `PerfResult` summary as JSON next to its raw samples."""
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -94,6 +100,7 @@ def _save_perf_result(result: PerfResult, target_dir: Path) -> Path:
         "workload_name": result.workload_name,
         "concurrency": result.concurrency,
         "summary": _perf_summary_to_dict(result),
+        "gpu_summary": _gpu_summary_to_dict(result.gpu_summary),
         "n_samples": len(result.samples),
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -120,6 +127,7 @@ def _bench_perf_for_model(
                 workload=expanded,
                 concurrency=concurrency,
                 prompts=prompts,
+                gpu_sampler=GPUSampler(),
             )
             _save_perf_result(result, perf_dir)
             results.append(result)
@@ -185,10 +193,10 @@ def _run_one_model(
 ) -> ModelRunResult:
     """Execute the full per-model pipeline.
 
-    `skip_baseline=True` is for hosts that can't fit the bf16 baseline
-    (e.g. 2x B300 vs a 310B-param model) — the run quantizes and measures
-    only the candidate, and the comparison report is empty. Raises if
-    `skip_baseline` and `skip_quantize` are both True (nothing would run).
+    `skip_baseline=True` is for hosts that can't fit the baseline checkpoint
+    (e.g. 2x B300 vs a 310B-param public FP8 model) — the run quantizes and
+    measures only the candidate, and the comparison report is empty. Raises
+    if `skip_baseline` and `skip_quantize` are both True (nothing would run).
     """
     if skip_baseline and skip_quantize:
         raise ValueError(

@@ -14,6 +14,7 @@ from lmbench.bench import (
     merged_task_list,
     parse_lm_eval_results,
     run_quality,
+    split_suite_by_fewshot,
 )
 from lmbench.bench import quality as quality_mod
 from lmbench.config import EvalSuite, ModelEntry
@@ -104,11 +105,11 @@ def test_build_lm_eval_args_basic() -> None:
     assert "--num_fewshot" not in argv
 
 
-def test_build_lm_eval_args_with_limit_and_fewshot() -> None:
+def test_build_lm_eval_args_with_limit_and_uniform_fewshot() -> None:
     suite = EvalSuite(
         name="s",
         tasks=("mmlu", "gsm8k"),
-        num_fewshot={"mmlu": 5, "gsm8k": 3},
+        num_fewshot={"mmlu": 5, "gsm8k": 5},
         limit=100,
     )
     argv = build_lm_eval_args(
@@ -119,6 +120,39 @@ def test_build_lm_eval_args_with_limit_and_fewshot() -> None:
     )
     assert argv[argv.index("--limit") + 1] == "100"
     assert argv[argv.index("--num_fewshot") + 1] == "5"
+
+
+def test_build_lm_eval_args_rejects_mixed_fewshot() -> None:
+    suite = EvalSuite(
+        name="s",
+        tasks=("mmlu", "gsm8k"),
+        num_fewshot={"mmlu": 5, "gsm8k": 3},
+    )
+    with pytest.raises(ValueError, match="one --num_fewshot"):
+        build_lm_eval_args(
+            base_url="http://x",
+            served_model_name="m",
+            suite=suite,
+            output_dir=Path("/tmp/q"),
+        )
+
+
+def test_split_suite_by_fewshot_groups_tasks() -> None:
+    suite = EvalSuite(
+        name="s",
+        tasks=("mmlu", "gsm8k", "truthfulqa_mc2"),
+        num_fewshot={"mmlu": 5, "gsm8k": 5, "truthfulqa_mc2": 0},
+        long_context=("ruler",),
+    )
+    groups = split_suite_by_fewshot(suite)
+    assert [g.tasks for g in groups] == [
+        ("mmlu", "gsm8k"),
+        ("truthfulqa_mc2",),
+        ("ruler",),
+    ]
+    assert groups[0].num_fewshot == {"mmlu": 5, "gsm8k": 5}
+    assert groups[1].num_fewshot == {"truthfulqa_mc2": 0}
+    assert groups[2].num_fewshot == {}
 
 
 class _FakeCompleted:

@@ -32,7 +32,7 @@ Those are gated behind the `[gpu]` / `[quant]` extras. mypy is configured in `py
 
 ### `vllm serve` orphans EngineCore subprocesses on shutdown
 
-Known limitation. vLLM internally spawns its own subprocesses that may end up in their own session, so `os.killpg` on the script's pgid does not always reap them. The teardown will report success but `ps -ef | grep vllm` may show leftover `VLLM::EngineCore` rows. Phase 8 runner will eventually use `psutil` to walk the child tree explicitly; for now, manual `kill -9` is the fallback.
+Known limitation. vLLM internally spawns its own subprocesses that may end up in their own session, so `os.killpg` on the script's pgid does not always reap them. The teardown will report success but `ps -ef | grep vllm` may show leftover `VLLM::EngineCore` rows. A future runner hardening pass should use `psutil` to walk the child tree explicitly; for now, manual `kill -9` is the fallback.
 
 ### "no results_*.json under <output_dir>; lm-eval may have failed"
 

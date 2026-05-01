@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -10,10 +11,13 @@ from lmbench.bench import LatencyStats, PerfSummary, QualityResult, TaskScore
 from lmbench.compare import (
     ComparisonReport,
     MetricDelta,
+    compare_result_dirs,
     delta_bootstrap_ci,
     diff_perf,
     diff_quality,
     is_within_tolerance,
+    load_perf_summary,
+    load_quality_summary,
 )
 from lmbench.report import render_html, render_markdown, write_html, write_markdown
 
@@ -43,6 +47,48 @@ def _summary(*, ttft: float, tokens_per_s: float) -> PerfSummary:
         output_tokens_per_s=tokens_per_s,
         request_rate_per_s=10.0,
     )
+
+
+def _write_perf_artifact(
+    stage_dir: Path, *, workload: str, concurrency: int, summary: PerfSummary
+) -> Path:
+    perf_dir = stage_dir / "perf"
+    perf_dir.mkdir(parents=True, exist_ok=True)
+    path = perf_dir / f"{workload}_c{concurrency}.json"
+    payload = {
+        "workload_name": workload,
+        "concurrency": concurrency,
+        "summary": {
+            "n_requests": summary.n_requests,
+            "n_success": summary.n_success,
+            "duration_s": summary.duration_s,
+            "ttft": summary.ttft.__dict__,
+            "itl": summary.itl.__dict__,
+            "tpot": summary.tpot.__dict__,
+            "e2e": summary.e2e.__dict__,
+            "output_tokens_total": summary.output_tokens_total,
+            "output_tokens_per_s": summary.output_tokens_per_s,
+            "request_rate_per_s": summary.request_rate_per_s,
+        },
+        "gpu_summary": {},
+        "n_samples": summary.n_requests,
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def _write_quality_artifact(stage_dir: Path, *, score: float) -> Path:
+    quality_dir = stage_dir / "quality"
+    quality_dir.mkdir(parents=True, exist_ok=True)
+    path = quality_dir / "quality_summary.json"
+    payload = {
+        "suite_name": "default",
+        "served_model_name": "m",
+        "scores": [{"task": "mmlu", "metric": "acc", "value": score, "stderr": None}],
+        "raw_results_path": str(quality_dir),
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
 
 
 # ---- MetricDelta ------------------------------------------------------
@@ -130,6 +176,52 @@ def test_diff_quality_filters_to_common_tasks() -> None:
     cmp = diff_quality(baseline=base, candidate=cand, threshold_pct=1.0)
     assert {d.name.split(".")[0] for d in cmp.deltas} == {"mmlu"}
     assert cmp.any_regression is True
+
+
+def test_load_saved_perf_and_quality_artifacts(tmp_path: Path) -> None:
+    stage = tmp_path / "stage"
+    perf_path = _write_perf_artifact(
+        stage,
+        workload="short",
+        concurrency=8,
+        summary=_summary(ttft=0.1, tokens_per_s=1000.0),
+    )
+    quality_path = _write_quality_artifact(stage, score=0.55)
+
+    workload, concurrency, summary = load_perf_summary(perf_path)
+    quality = load_quality_summary(quality_path)
+
+    assert workload == "short"
+    assert concurrency == 8
+    assert summary.output_tokens_per_s == pytest.approx(1000.0)
+    assert quality.scores[0].task == "mmlu"
+    assert quality.scores[0].value == pytest.approx(0.55)
+
+
+def test_compare_result_dirs_pairs_saved_artifacts(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline"
+    candidate = tmp_path / "candidate"
+    _write_perf_artifact(
+        baseline,
+        workload="short",
+        concurrency=8,
+        summary=_summary(ttft=0.1, tokens_per_s=1000.0),
+    )
+    _write_perf_artifact(
+        candidate,
+        workload="short",
+        concurrency=8,
+        summary=_summary(ttft=0.09, tokens_per_s=1100.0),
+    )
+    _write_quality_artifact(baseline, score=0.60)
+    _write_quality_artifact(candidate, score=0.59)
+
+    report = compare_result_dirs(baseline, candidate)
+
+    assert len(report.perf) == 1
+    assert report.perf[0].workload_name == "short"
+    assert len(report.quality) == 1
+    assert report.quality[0].deltas[0].name == "mmlu.acc"
 
 
 # ---- delta_bootstrap_ci ----------------------------------------------

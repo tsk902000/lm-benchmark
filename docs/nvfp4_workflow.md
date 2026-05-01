@@ -6,7 +6,7 @@
 HF baseline checkpoint
         |
         v
-1. Load with transformers (bfloat16, device_map="auto")
+1. Load with transformers (checkpoint/native dtype, device_map="auto")
         |
         v
 2. Sample calibration text (cnn_dailymail x 512 by default)
@@ -19,8 +19,9 @@ HF baseline checkpoint
                                         forward_loop=cb)
         |
         v
-5. model.save_pretrained(output_dir)
+5. modelopt.torch.export.export_hf_checkpoint(model, export_dir)
    tokenizer.save_pretrained(output_dir)
+   verify hf_quant_config.json exists
    write lmbench_quant_meta.json sidecar
         |
         v
@@ -36,13 +37,17 @@ HF baseline checkpoint
 
 ## Pinned versions
 
-vLLM and `nvidia-modelopt` move quickly; the export-import handshake breaks across some minor releases. Pin a tested pair in `pyproject.toml [project.optional-dependencies]` and document the known-good combo in `docs/b300_setup.md` once we have a green run on real B300 hardware.
+vLLM and `nvidia-modelopt` move quickly; the export-import handshake breaks across some minor releases. The vLLM side expects a ModelOpt unified HuggingFace checkpoint, including `hf_quant_config.json`. Pin a tested pair in `pyproject.toml [project.optional-dependencies]` and document the known-good combo in `docs/b300_setup.md` once we have a green run on real B300 hardware.
+
+For public MiMo checkpoints, remember that the starting point is already FP8.
+Treat the resulting comparison as public-FP8 -> NVFP4 unless you substitute a
+true BF16 checkpoint and run a matching BF16 baseline.
 
 ## Calibration knobs
 
 | Field             | Default            | Notes                                                                 |
 |-------------------|--------------------|-----------------------------------------------------------------------|
-| `dataset`         | `cnn_dailymail`    | Override to `wikitext` for math-heavy bias; pluggable.                |
+| `dataset`         | `cnn_dailymail`    | Starter default only; MiMo should be calibrated with representative chat/code/long-context data before publishing loss numbers. |
 | `dataset_config`  | `"3.0.0"`          | Required for cnn_dailymail.                                           |
 | `split`           | `train`            | `validation` is fine for spot-checks; the harness does not memorize.  |
 | `num_samples`     | 512                | More samples = more stable scaling factors. 256 is OK in a pinch.     |
@@ -58,6 +63,7 @@ vLLM and `nvidia-modelopt` move quickly; the export-import handshake breaks acro
 ## Tuning checklist when quality drops
 
 1. Increase `num_samples` to 1024.
-2. Try a different `dataset` (wikitext vs cnn_dailymail).
-3. Bump `max_seq_len` so calibration covers the full context window the model is going to serve.
-4. If still bad, fall back to `nvfp4_llmcompressor` (deferred recipe in the schema; not yet wired).
+2. Try a representative calibration dataset (MiMo chat templates, code, math, tool-use traces, and long prompts).
+3. Bump `max_seq_len` so calibration covers the context window the model is going to serve.
+4. Keep sensitive modules unquantized first (routers/gates, lm head, embeddings, attention sink/bias paths, multimodal encoders), then quantize them only after layer sensitivity checks.
+5. If still bad, fall back to `nvfp4_llmcompressor` (deferred recipe in the schema; not yet wired).

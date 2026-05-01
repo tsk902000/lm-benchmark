@@ -65,7 +65,7 @@ def test_quantize_stub_runs(empty_yaml: Path) -> None:
     assert result.exit_code == 0
 
 
-def test_compare_stub_runs(tmp_path: Path) -> None:
+def test_compare_writes_reports_for_saved_artifacts(tmp_path: Path) -> None:
     a = tmp_path / "baseline"
     a.mkdir()
     b = tmp_path / "candidate"
@@ -76,6 +76,8 @@ def test_compare_stub_runs(tmp_path: Path) -> None:
         ["compare", "--baseline", str(a), "--candidate", str(b), "--output", str(out)],
     )
     assert result.exit_code == 0
+    assert (out / "report.md").exists()
+    assert (out / "report.html").exists()
 
 
 def test_run_dispatches_to_pipeline(

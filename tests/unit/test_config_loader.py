@@ -69,7 +69,10 @@ items:
 def test_load_models_seed_yaml() -> None:
     models = load_models(Path("configs/models.yaml"))
     names = {m.name for m in models}
-    assert {"opt-125m-smoke", "llama-3.1-8b-instruct", "qwen2.5-7b-instruct"} <= names
+    assert names == {"opt-125m-smoke", "mimo-v2.5"}
+    mimo = next(m for m in models if m.name == "mimo-v2.5")
+    assert mimo.hf_id == "XiaomiMiMo/MiMo-V2.5"
+    assert mimo.vllm.trust_remote_code is True
 
 
 def test_load_workloads_seed_yaml() -> None:
@@ -101,24 +104,16 @@ def test_load_run_plan_seed_yaml() -> None:
     assert plan.models[0].hf_id == "facebook/opt-125m"
 
 
-def test_load_run_plan_baseline_vs_nvfp4() -> None:
-    """The shipped MiMo NVFP4 plan loads on a 2x B300 hardware profile."""
-    plan = load_run_plan(Path("configs/run_baseline_vs_nvfp4.yaml"))
-    assert plan.name == "baseline-vs-nvfp4"
-    names = {m.name for m in plan.models}
-    # V2-Flash runs the full baseline-vs-NVFP4 cycle.
-    # V2.5 is included for `--skip-baseline` use only (bf16 ~620 GB
-    # does not fit 576 GB HBM); FP8 KV cache + TP=2 is the live config.
-    assert {"mimo-v2-flash", "mimo-v2.5"} <= names
+def test_load_run_plan_mimo_v2_5_fp8_vs_nvfp4() -> None:
+    """The V2.5 plan attempts public FP8 baseline vs NVFP4 on 2x B300."""
+    plan = load_run_plan(Path("configs/run_mimo_v2_5_nvfp4.yaml"))
+    assert plan.name == "mimo-v2-5-fp8-vs-nvfp4"
+    assert {m.name for m in plan.models} == {"mimo-v2.5"}
     assert plan.hardware.num_gpus == 2
     assert plan.hardware.blackwell is True
     assert plan.quant_recipe is not None
     assert plan.quant_recipe.method == "nvfp4"
-    assert {"ruler", "longbench", "livecodebench"} <= set(plan.eval_suite.long_context)
-    flash = next(m for m in plan.models if m.name == "mimo-v2-flash")
-    assert flash.vllm.tensor_parallel_size == 2
-    assert flash.vllm.trust_remote_code is True
-    v25 = next(m for m in plan.models if m.name == "mimo-v2.5")
+    v25 = plan.models[0]
     assert v25.vllm.tensor_parallel_size == 2
     assert v25.vllm.kv_cache_dtype == "fp8"
     assert v25.vllm.trust_remote_code is True

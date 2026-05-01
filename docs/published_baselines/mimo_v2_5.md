@@ -1,80 +1,51 @@
-# MiMo-V2.5 - published baseline scores
+# MiMo-V2.5 - published reference notes
 
-When running `lmbench run --plan configs/run_baseline_vs_nvfp4.yaml --skip-baseline`
-on a 2x B300 host, the comparison report for MiMo-V2.5 will be empty
-(there is no on-host bf16 baseline to diff against - 620 GB does not fit
-576 GB HBM). Use the numbers below as the published reference and
-compare your NVFP4 results against them by hand.
+Run `lmbench run --plan configs/run_mimo_v2_5_nvfp4.yaml` on a 2x B300 host
+to attempt a same-harness public-FP8 checkpoint vs NVFP4 comparison.
 
-These were extracted from the MiMo-V2.5 model card and the official
-mimo.xiaomi.com landing page.
+This is not BF16->NVFP4 loss: the public MiMo-V2.5 checkpoint is already FP8.
+If the FP8 baseline stage cannot serve on your exact vLLM / driver stack,
+rerun with `--skip-baseline` and use this file only as loose external context.
 
-> Caveat: the model card mostly publishes scores as comparison charts
-> (images), not as text tables. The numbers below are the explicit
-> textual scores that appeared on the model card / landing page at the
-> time the harness was authored. Re-fetch before using as a citation
-> in any external report.
+## What This Harness Covers
 
-## Confirmed scores
+Directly covered through `lm-eval`:
 
-| Benchmark             | Score | Source                       |
-|-----------------------|------:|------------------------------|
-| SWE-bench Pro         |  56.1 | model card (huggingface)     |
-| Terminal-Bench 2      |  65.8 | model card (huggingface)     |
-| Claw-Eval (general)   |  62.3 | mimo.xiaomi.com landing page |
-
-## Qualitative claims (from the model card / landing page)
-
-- Video understanding: "matching Gemini 3 Pro"
-- Multimodal agentic work: "matching Claude Sonnet 4.6"
-- Image and document understanding: "staying competitive"
-- Long context: chart only, no published number; uses Graphwalks-style
-  evaluation per the model card
-
-## Sibling-model scores (for sanity bracketing only)
-
-These are NOT the V2.5 baseline. Use them only to sanity-check your
-NVFP4-V2.5 numbers (V2.5 should be at least as strong as V2-Flash on the
-same task, and within striking distance of V2.5-Pro).
-
-### MiMo-V2.5-Pro
-
-| Benchmark | Score | Notes                |
-|-----------|------:|----------------------|
-| GSM8K     |  66.7 | per llm-stats summary |
-| HLE       |  99.6 | per llm-stats summary; verify before citing - HLE rarely reaches 99 |
-| MMLU-Pro  |  48.0 | per llm-stats summary |
-
-### MiMo-V2-Flash
-
-| Benchmark   | Score | Notes               |
-|-------------|------:|---------------------|
-| MMLU-Pro    |  73.2 | per llm-stats summary |
-| GSM8K (8-shot) |  92.3 | per llm-stats summary |
-| HumanEval+ (1-shot) | 70.7 | per llm-stats summary |
-
-## How to compare
-
-After your NVFP4 run completes, the candidate side of the report
-includes parsed `quality_summary.json` files at
-`results/baseline-vs-nvfp4/mimo-v2.5/quantized/quality/quality_summary.json`.
-
-The relevant tasks for direct comparison against MiMo's published
-baseline are the lm-eval entries that overlap:
-- `mmlu` (compare against MMLU-Pro qualitatively if direct MMLU is missing)
+- `mmlu`
 - `gsm8k`
-- `livecodebench` (newest; published HumanEval+ is the loose proxy)
+- `arc_challenge`
+- `hellaswag`
+- `truthfulqa_mc2`
+- optionally `ruler`, `longbench`, `livecodebench` if supported by the
+  installed `lm-eval` version
 
-For SWE-bench Pro and Terminal-Bench 2 we don't currently run them in
-this harness (they need separate Docker / shell drivers - see the
-"Out of scope" note in `CHANGELOG.md`). If you need a direct match for
-those two benchmarks, run them with their official harnesses against
-the same vLLM endpoint your NVFP4 run uses.
+Not covered here:
+
+- SWE-bench Pro
+- Terminal-Bench 2
+- tau-bench / tau2-style multi-turn agent tasks
+- Aider Polyglot
+
+Run those upstream harnesses against the same vLLM endpoint if you need direct
+comparison to Xiaomi's published agentic/coding numbers.
+
+## External References
+
+At verification time, public pages indicated:
+
+- MiMo-V2.5 is an FP8 custom-code checkpoint on Hugging Face.
+- The vLLM recipe describes MiMo-V2.5 as 310B total / 15B active, 1,048,576
+  context, native omnimodal, and native FP8.
+- Xiaomi/third-party model pages report ClawEval-style public numbers, but many
+  benchmark values are chart images or evaluation-result metadata rather than
+  stable text tables.
+
+Re-fetch before citing exact published benchmark numbers externally.
 
 ## Sources
 
 - https://huggingface.co/XiaomiMiMo/MiMo-V2.5
-- https://huggingface.co/XiaomiMiMo/MiMo-V2.5-Pro
-- https://huggingface.co/XiaomiMiMo/MiMo-V2-Flash
-- https://mimo.xiaomi.com/mimo-v2-5
-- https://llm-stats.com/benchmarks
+- https://huggingface.co/XiaomiMiMo/MiMo-V2.5/blob/main/config.json
+- https://huggingface.co/XiaomiMiMo/MiMo-V2.5/discussions/1
+- https://recipes.vllm.ai/XiaomiMiMo/MiMo-V2.5
+- https://mimo.mi.com/
