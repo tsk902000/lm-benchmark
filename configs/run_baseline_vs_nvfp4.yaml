@@ -48,29 +48,34 @@ models:
       enable_prefix_caching: true
 
   # ---------------------------------------------------------------
-  # Real target: full multimodal 310B/15B-active MoE.
-  # COMMENTED OUT for 2x B300 - bf16 ~620 GB does not fit 576 GB HBM.
-  # Uncomment once you have 4+ B300s (or an 8x H200 / similar host
-  # for the baseline phase). NVFP4 inference of V2.5 fits TP=2 and
-  # could be measured standalone, but the runner currently requires
-  # a baseline to produce a comparison report.
+  # Real target: MiMo-V2.5 multimodal 310B/15B-active MoE.
+  #
+  # On 2x B300, run this with --skip-baseline:
+  #     uv run lmbench run --plan configs/run_baseline_vs_nvfp4.yaml \
+  #         --skip-baseline
+  #
+  # bf16 baseline (~620 GB) does not fit 576 GB HBM, so the comparison
+  # report for V2.5 will be empty - quality is compared OFFLINE against
+  # MiMo's published numbers in `docs/published_baselines/mimo_v2_5.md`.
+  # NVFP4 inference (~155 GB) plus FP8 KV cache fits TP=2 with room
+  # to spare for higher concurrency / longer context.
   # ---------------------------------------------------------------
-  # - name: mimo-v2.5
-  #   hf_id: XiaomiMiMo/MiMo-V2.5
-  #   gated: false
-  #   notes: >
-  #     Sparse MoE (310B / 15B active), hybrid SWA+GA attention with
-  #     sinks, multimodal (text + ViT + audio). Calibration here is
-  #     text-only via cnn_dailymail; the multimodal encoders may stay
-  #     bf16 even after quantize.
-  #   expected_max_model_len: 262144
-  #   vllm:
-  #     tensor_parallel_size: 4    # baseline needs >=4 GPUs
-  #     max_model_len: 32768
-  #     dtype: bfloat16
-  #     gpu_memory_utilization: 0.9
-  #     trust_remote_code: true
-  #     enable_prefix_caching: true
+  - name: mimo-v2.5
+    hf_id: XiaomiMiMo/MiMo-V2.5
+    gated: false
+    notes: >
+      Sparse MoE (310B / 15B active), hybrid SWA+GA attention with sinks,
+      multimodal (text + ViT + audio). Run with --skip-baseline on 2x
+      B300; compare quality offline against MiMo's published numbers.
+    expected_max_model_len: 262144
+    vllm:
+      tensor_parallel_size: 2          # NVFP4 fits TP=2
+      max_model_len: 32768
+      dtype: bfloat16
+      gpu_memory_utilization: 0.9
+      kv_cache_dtype: fp8              # extra headroom on 2x B300
+      trust_remote_code: true
+      enable_prefix_caching: true
 
 workloads:
   # Standard sweep at moderate context to stay within max_model_len above.

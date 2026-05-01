@@ -181,24 +181,39 @@ def _run_one_model(
     output_dir: Path,
     skip_quality: bool = False,
     skip_quantize: bool = False,
+    skip_baseline: bool = False,
 ) -> ModelRunResult:
-    """Execute the full per-model pipeline."""
+    """Execute the full per-model pipeline.
+
+    `skip_baseline=True` is for hosts that can't fit the bf16 baseline
+    (e.g. 2x B300 vs a 310B-param model) — the run quantizes and measures
+    only the candidate, and the comparison report is empty. Raises if
+    `skip_baseline` and `skip_quantize` are both True (nothing would run).
+    """
+    if skip_baseline and skip_quantize:
+        raise ValueError(
+            "skip_baseline and skip_quantize cannot both be True; "
+            "nothing would run for this model"
+        )
     model_dir = output_dir / model.name
     baseline_dir = model_dir / "baseline"
     quant_dir = model_dir / "quantized"
     cmp_dir = model_dir / "comparison"
 
-    with serve_model(model) as handle:
-        baseline_perf = _bench_perf_for_model(
-            plan=plan, model=model, handle=handle, output_dir=baseline_dir
-        )
-        baseline_quality: QualityResult | None = (
-            None
-            if skip_quality
-            else _bench_quality_for_model(
+    baseline_perf: tuple[PerfResult, ...] = ()
+    baseline_quality: QualityResult | None = None
+    if not skip_baseline:
+        with serve_model(model) as handle:
+            baseline_perf = _bench_perf_for_model(
                 plan=plan, model=model, handle=handle, output_dir=baseline_dir
             )
-        )
+            baseline_quality = (
+                None
+                if skip_quality
+                else _bench_quality_for_model(
+                    plan=plan, model=model, handle=handle, output_dir=baseline_dir
+                )
+            )
 
     quantized_perf: tuple[PerfResult, ...] = ()
     quantized_quality: QualityResult | None = None
@@ -258,6 +273,7 @@ def run_plan(
     output_dir: Path | None = None,
     skip_quality: bool = False,
     skip_quantize: bool = False,
+    skip_baseline: bool = False,
 ) -> PipelineResult:
     """Run a full `RunPlan` — every model gets its own subdir under output_dir."""
     out = output_dir or plan.output_dir
@@ -271,6 +287,7 @@ def run_plan(
             output_dir=out,
             skip_quality=skip_quality,
             skip_quantize=skip_quantize,
+            skip_baseline=skip_baseline,
         )
         model_results.append(result)
     return PipelineResult(
@@ -287,6 +304,7 @@ def run_plan_from_file(
     output_dir: Path | None = None,
     skip_quality: bool = False,
     skip_quantize: bool = False,
+    skip_baseline: bool = False,
 ) -> PipelineResult:
     """Convenience: load a plan YAML and run it."""
     plan = load_run_plan(path)
@@ -295,4 +313,5 @@ def run_plan_from_file(
         output_dir=output_dir,
         skip_quality=skip_quality,
         skip_quantize=skip_quantize,
+        skip_baseline=skip_baseline,
     )

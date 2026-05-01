@@ -346,6 +346,80 @@ def test_run_plan_aborts_on_failed_verify(
         run_plan(plan, output_dir=tmp_path / "out3", skip_quality=True)
 
 
+def test_run_plan_skip_baseline(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`--skip-baseline` skips the baseline serve/bench but still quantizes."""
+    monkeypatch.setattr(env_mod, "_safe_run", lambda _argv: None)
+    monkeypatch.setattr(env_mod, "_package_versions", lambda: {})
+    monkeypatch.setattr(pipeline_mod, "serve_model", _fake_serve)
+    monkeypatch.setattr(
+        pipeline_mod,
+        "generate",
+        lambda spec: tuple(
+            Prompt(text="p", expected_output_tokens=spec.output_len or 8)
+            for _ in range(spec.num_prompts)
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline_mod,
+        "run_workload",
+        lambda **kw: _perf_result(kw["workload"].name, kw["concurrency"]),
+    )
+    monkeypatch.setattr(pipeline_mod, "run_quality", lambda **_kw: _quality_result(0.5))
+    fake_ckpt = QuantizedCheckpoint(
+        output_dir=tmp_path / "ckpt",
+        method="nvfp4",
+        source_hf_id="facebook/opt-125m",
+    )
+    monkeypatch.setattr(pipeline_mod, "quantize_to_nvfp4", lambda **_kw: fake_ckpt)
+    monkeypatch.setattr(
+        pipeline_mod,
+        "verify_checkpoint",
+        lambda **_kw: VerifyResult(ok=True, completion="Paris"),
+    )
+    plan = RunPlan.model_validate(
+        {
+            **_smoke_plan().model_dump(),
+            "quant_recipe": {"name": "r", "method": "nvfp4"},
+            "hardware": {
+                "name": "hp",
+                "gpu": "B300",
+                "blackwell": True,
+                "num_gpus": 1,
+                "default_tp_size": 1,
+            },
+        }
+    )
+    result = pipeline_mod.run_plan(
+        plan, output_dir=tmp_path / "out-skip-baseline", skip_baseline=True
+    )
+    only = result.models[0]
+    assert only.baseline_perf == ()
+    assert only.baseline_quality is None
+    assert only.quantized_perf
+    assert only.quantized_quality is not None
+    assert not (tmp_path / "out-skip-baseline" / "opt" / "baseline").exists()
+    assert only.report_md.exists()
+    assert only.report_html.exists()
+
+
+def test_run_plan_skip_baseline_and_skip_quantize_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(env_mod, "_safe_run", lambda _argv: None)
+    monkeypatch.setattr(env_mod, "_package_versions", lambda: {})
+    monkeypatch.setattr(pipeline_mod, "serve_model", _fake_serve)
+    plan = _smoke_plan()
+    with pytest.raises(ValueError, match="cannot both be True"):
+        pipeline_mod.run_plan(
+            plan,
+            output_dir=tmp_path / "out-bad",
+            skip_baseline=True,
+            skip_quantize=True,
+        )
+
+
 def test_perf_summary_to_dict_round_trip() -> None:
     result = _perf_result("w", 1)
     payload = pipeline_mod._perf_summary_to_dict(result)

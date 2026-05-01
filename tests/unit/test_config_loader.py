@@ -106,12 +106,10 @@ def test_load_run_plan_baseline_vs_nvfp4() -> None:
     plan = load_run_plan(Path("configs/run_baseline_vs_nvfp4.yaml"))
     assert plan.name == "baseline-vs-nvfp4"
     names = {m.name for m in plan.models}
-    # 2 x B300 cannot host MiMo-V2.5 bf16 baseline (~620 GB > 576 GB HBM),
-    # so the V2.5 entry is intentionally commented out and only the
-    # smaller V2-Flash derisk runs in this plan.
-    assert "mimo-v2-flash" in names
-    assert "mimo-v2.5" not in names
-    # Hardware constraints actually match a 2-GPU host.
+    # V2-Flash runs the full baseline-vs-NVFP4 cycle.
+    # V2.5 is included for `--skip-baseline` use only (bf16 ~620 GB
+    # does not fit 576 GB HBM); FP8 KV cache + TP=2 is the live config.
+    assert {"mimo-v2-flash", "mimo-v2.5"} <= names
     assert plan.hardware.num_gpus == 2
     assert plan.hardware.blackwell is True
     assert plan.quant_recipe is not None
@@ -120,6 +118,10 @@ def test_load_run_plan_baseline_vs_nvfp4() -> None:
     flash = next(m for m in plan.models if m.name == "mimo-v2-flash")
     assert flash.vllm.tensor_parallel_size == 2
     assert flash.vllm.trust_remote_code is True
+    v25 = next(m for m in plan.models if m.name == "mimo-v2.5")
+    assert v25.vllm.tensor_parallel_size == 2
+    assert v25.vllm.kv_cache_dtype == "fp8"
+    assert v25.vllm.trust_remote_code is True
 
 
 def test_load_models_rejects_non_list(tmp_path: Path) -> None:

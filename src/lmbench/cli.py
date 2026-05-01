@@ -91,6 +91,18 @@ def run(
     skip_quantize: Annotated[
         bool, typer.Option("--skip-quantize", help="Skip the NVFP4 candidate stage.")
     ] = False,
+    skip_baseline: Annotated[
+        bool,
+        typer.Option(
+            "--skip-baseline",
+            help=(
+                "Skip the bf16 baseline phase (use when the host cannot fit "
+                "bf16 weights; e.g. a 310B model on 2x B300). The run still "
+                "quantizes and measures the candidate; comparison report "
+                "will be empty since there is no baseline to diff against."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Execute the full pipeline: serve, bench, quantize, re-serve, bench, compare."""
     from lmbench.runner import run_plan_from_file
@@ -100,6 +112,7 @@ def run(
         output_dir=output,
         skip_quality=skip_quality,
         skip_quantize=skip_quantize,
+        skip_baseline=skip_baseline,
     )
     console.print(
         f"[green]run[/] complete: plan={result.plan_name} "

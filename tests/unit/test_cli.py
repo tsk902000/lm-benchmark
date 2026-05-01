@@ -93,11 +93,13 @@ def test_run_dispatches_to_pipeline(
         output_dir: Path | None = None,
         skip_quality: bool = False,
         skip_quantize: bool = False,
+        skip_baseline: bool = False,
     ) -> PipelineResult:
         captured["path"] = path
         captured["output_dir"] = output_dir
         captured["skip_quality"] = skip_quality
         captured["skip_quantize"] = skip_quantize
+        captured["skip_baseline"] = skip_baseline
         env = EnvCapture(
             captured_at_unix=0.0,
             os="Linux",
