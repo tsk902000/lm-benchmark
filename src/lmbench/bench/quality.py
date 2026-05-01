@@ -128,6 +128,23 @@ def parse_lm_eval_results(
     )
 
 
+def merged_task_list(suite: EvalSuite) -> tuple[str, ...]:
+    """Concatenate `suite.tasks` and `suite.long_context`, dedup-preserving order.
+
+    Long-context tasks (RULER / LongBench / LiveCodeBench / etc.) are passed
+    to lm-eval the same way as standard tasks; they only differ by being
+    typically longer-running. Callers needing different `--limit` per task
+    family should split the suite.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for task in (*suite.tasks, *suite.long_context):
+        if task not in seen:
+            seen.add(task)
+            out.append(task)
+    return tuple(out)
+
+
 def build_lm_eval_args(
     *,
     base_url: str,
@@ -137,7 +154,7 @@ def build_lm_eval_args(
     executable: str = "lm_eval",
 ) -> list[str]:
     """Build the `lm_eval` CLI argv for an `EvalSuite` against a vLLM server."""
-    tasks = ",".join(suite.tasks)
+    tasks = ",".join(merged_task_list(suite))
     model_args = (
         f"base_url={base_url}/v1/completions,"
         f"model={served_model_name},"

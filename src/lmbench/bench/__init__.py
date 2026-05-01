@@ -16,6 +16,7 @@ from .quality import (
     QualityResult,
     TaskScore,
     build_lm_eval_args,
+    merged_task_list,
     parse_lm_eval_results,
     run_quality,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "gen_sharegpt",
     "generate",
     "latency_stats",
+    "merged_task_list",
     "parse_lm_eval_results",
     "percentile",
     "run_quality",

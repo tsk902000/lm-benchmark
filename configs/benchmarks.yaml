@@ -35,6 +35,7 @@ workloads:
 
 eval_suite:
   name: default
+  # Standard knowledge / reasoning suite.
   tasks:
     - mmlu
     - gsm8k
@@ -47,5 +48,22 @@ eval_suite:
     arc_challenge: 25
     hellaswag: 10
     truthfulqa_mc2: 0
-  long_context: []
+  # Long-context + coding tasks. Merged into `lm_eval --tasks` alongside
+  # the entries in `tasks` above (see `bench.quality.merged_task_list`).
+  # Whether each one actually runs depends on whether the installed
+  # `lm-eval` version ships that task; lm-eval will surface a clear error
+  # otherwise. All three fit the `local-completions` backend cleanly.
+  #
+  # Long-context families that work via lm-eval:
+  #   - RULER (NVIDIA, synthetic long-context retrieval / aggregation):
+  #       ruler, niah_single_1..3, niah_multikey_1..3,
+  #       niah_multivalue, niah_multiquery, vt, cwe, fwe, qa_1, qa_2
+  #   - LongBench v2 (Tsinghua, multi-doc QA + code repo understanding):
+  #       longbench
+  #   - LiveCodeBench (contamination-resistant competitive programming):
+  #       livecodebench
+  long_context:
+    - ruler
+    - longbench
+    - livecodebench
   include_humaneval: false

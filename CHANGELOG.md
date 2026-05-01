@@ -59,3 +59,21 @@ All notable changes to this project will be documented in this file.
 
 Test status: **203 unit tests + 1 GPU integration smoke (skipped without
 `--gpu`)**, **90% coverage**, ruff clean, mypy 0 issues.
+
+### Phase 5+ — long-context + coding tasks via lm-eval
+
+- `bench/quality.py` now exposes `merged_task_list(suite)` and merges
+  `EvalSuite.long_context` into the lm-eval `--tasks` argv. Previously the
+  field was schema-only and silently ignored at runtime.
+- `configs/benchmarks.yaml` enables RULER, LongBench v2, and LiveCodeBench
+  in the default suite's `long_context` field. These run through the same
+  `lm_eval --model local-completions` driver as the standard tasks; whether
+  each one runs depends on the installed lm-eval version supporting that
+  task (otherwise lm-eval surfaces a clear error).
+- 4 new unit tests covering merge dedup, argv inclusion, and seed-config
+  wiring. Test suite at 207 unit tests, 90% coverage.
+
+Out of scope (would need separate harness modules; deferred): SWE-bench
+Verified / Pro, Terminal-Bench, tau2-bench, Aider Polyglot - these require
+Docker patch evaluation, shell session drivers, or simulated-user
+multi-turn dialogue and don't fit the lm-eval `local-completions` model.

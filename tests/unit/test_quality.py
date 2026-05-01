@@ -11,6 +11,7 @@ import pytest
 from lmbench.bench import (
     QualityResult,
     build_lm_eval_args,
+    merged_task_list,
     parse_lm_eval_results,
     run_quality,
 )
@@ -220,3 +221,58 @@ def test_run_quality_missing_results_json(
             served_model_name="opt",
             output_dir=tmp_path / "q",
         )
+
+
+# ---- long-context / coding task wiring -------------------------------
+
+
+def test_merged_task_list_concatenates_and_dedups() -> None:
+    suite = EvalSuite(
+        name="s",
+        tasks=("mmlu", "gsm8k"),
+        long_context=("ruler", "longbench", "mmlu"),  # mmlu is duplicate
+    )
+    merged = merged_task_list(suite)
+    assert merged == ("mmlu", "gsm8k", "ruler", "longbench")
+
+
+def test_merged_task_list_long_context_only() -> None:
+    suite = EvalSuite(
+        name="long-only",
+        tasks=("livecodebench",),
+        long_context=("ruler", "longbench"),
+    )
+    merged = merged_task_list(suite)
+    assert merged == ("livecodebench", "ruler", "longbench")
+
+
+def test_build_lm_eval_args_includes_long_context() -> None:
+    suite = EvalSuite(
+        name="s",
+        tasks=("mmlu",),
+        long_context=("ruler", "livecodebench"),
+    )
+    argv = build_lm_eval_args(
+        base_url="http://x",
+        served_model_name="m",
+        suite=suite,
+        output_dir=Path("/tmp/q"),
+    )
+    tasks_value = argv[argv.index("--tasks") + 1]
+    assert tasks_value == "mmlu,ruler,livecodebench"
+
+
+def test_seed_benchmarks_yaml_exposes_long_context_tasks() -> None:
+    """The shipped seed config wires up RULER / LongBench / LiveCodeBench."""
+    from lmbench.config import load_eval_suite
+
+    suite = load_eval_suite(Path("configs/benchmarks.yaml"))
+    assert "ruler" in suite.long_context
+    assert "longbench" in suite.long_context
+    assert "livecodebench" in suite.long_context
+    # Combined task list passed to lm-eval includes them.
+    merged = merged_task_list(suite)
+    assert {"ruler", "longbench", "livecodebench"} <= set(merged)
+    # And the standard tasks are still there.
+    assert "mmlu" in merged
+    assert "gsm8k" in merged
