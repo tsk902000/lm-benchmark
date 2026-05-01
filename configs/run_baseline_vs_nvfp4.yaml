@@ -1,26 +1,30 @@
-# Full baseline-vs-NVFP4 run plan targeting XiaomiMiMo/MiMo-V2.5.
+# Baseline-vs-NVFP4 plan for a 2x B300 host.
 #
-# IMPORTANT - derisking strategy:
+# Hardware budget: 2 x B300 = 576 GB HBM.
+#   - MiMo-V2-Flash (smaller text trunk): bf16 fits TP=2; NVFP4 fits TP=2.
+#   - MiMo-V2.5 (310B/15B-active, multimodal): bf16 ~620 GB - DOES NOT
+#     FIT on 2 GPUs. NVFP4 (~155 GB) does. With only 2 B300s we cannot
+#     produce a baseline-vs-quantized comparison for V2.5 here. The V2.5
+#     entry is therefore COMMENTED OUT with a clear note; uncomment it
+#     once you have 4+ B300s (or a borrowed 8x H200 host for baseline).
 #
-# MiMo-V2.5 is a 310B/15B-active sparse-MoE multimodal model with a custom
-# attention block (hybrid SWA + GA + attention sinks) and ViT/audio
-# encoders. NVIDIA has not (as of writing) published an NVFP4 release for
-# it, and modelopt's NVFP4_DEFAULT_CFG pattern-matches against known module
-# shapes - so V2.5 may not auto-quantize without a custom quant_cfg.
+# Architectural risk for MiMo-V2.5 NVFP4:
+#   - Custom hybrid SWA+GA attention with sinks - modelopt may not
+#     pattern-match the block without a custom quant_cfg.
+#   - Multimodal ViT + audio encoders - calibration here is text-only
+#     via cnn_dailymail; the encoders may stay bf16 even after quantize.
+#   - vLLM must support both the bf16 and modelopt_fp4 forms; custom
+#     remote_code may or may not load.
 #
-# This plan therefore runs in two stages:
+# Derisking strategy:
+#   1. Run V2-Flash through the full pipeline on 2x B300. If NVFP4
+#      quantizes and verifies cleanly, we have evidence the MiMo
+#      transformer block family is supported.
+#   2. Then attempt V2.5 - either by securing a larger host for baseline,
+#      or by running NVFP4 inference standalone (would need a new
+#      `--skip-baseline` runner mode; not yet implemented).
 #
-#   1. mimo-v2-flash  - smaller text-only ancestor of V2.5's LLM trunk.
-#                       If this NVFP4's cleanly, we have evidence the
-#                       trunk pattern is recognized by modelopt.
-#   2. mimo-v2.5      - the real target. Expect surprises (multimodal
-#                       encoders staying bf16, custom-block rejection,
-#                       or vLLM not loading the modelopt_fp4 form).
-#
-# To run only the derisk stage, comment out the v2.5 entry in `models:`
-# below. The schema rejects NVFP4 on non-Blackwell hardware, so if you
-# do not have a B300 / B100 / B200 host, switch the `hardware:` profile
-# and either drop `quant_recipe` or change its method.
+# To run: `uv run lmbench run --plan configs/run_baseline_vs_nvfp4.yaml`
 
 name: baseline-vs-nvfp4
 output_dir: results/baseline-vs-nvfp4
@@ -43,26 +47,30 @@ models:
       trust_remote_code: true
       enable_prefix_caching: true
 
+  # ---------------------------------------------------------------
   # Real target: full multimodal 310B/15B-active MoE.
-  # WARNING: bf16 baseline ~620 GB; TP=2 on B300 (576 GB) is borderline
-  # tight, so this entry uses TP=4. If you only have a 2-GPU host, drop
-  # this entry and run the derisk stage first. NVFP4 inference fits TP=2.
-  - name: mimo-v2.5
-    hf_id: XiaomiMiMo/MiMo-V2.5
-    gated: false
-    notes: >
-      Sparse MoE (310B / 15B active), hybrid SWA+GA attention with sinks,
-      multimodal (text + ViT + audio). Calibration here is text-only via
-      cnn_dailymail; the multimodal encoders may stay bf16 even after
-      quantize. Verify carefully.
-    expected_max_model_len: 262144
-    vllm:
-      tensor_parallel_size: 4
-      max_model_len: 32768
-      dtype: bfloat16
-      gpu_memory_utilization: 0.9
-      trust_remote_code: true
-      enable_prefix_caching: true
+  # COMMENTED OUT for 2x B300 - bf16 ~620 GB does not fit 576 GB HBM.
+  # Uncomment once you have 4+ B300s (or an 8x H200 / similar host
+  # for the baseline phase). NVFP4 inference of V2.5 fits TP=2 and
+  # could be measured standalone, but the runner currently requires
+  # a baseline to produce a comparison report.
+  # ---------------------------------------------------------------
+  # - name: mimo-v2.5
+  #   hf_id: XiaomiMiMo/MiMo-V2.5
+  #   gated: false
+  #   notes: >
+  #     Sparse MoE (310B / 15B active), hybrid SWA+GA attention with
+  #     sinks, multimodal (text + ViT + audio). Calibration here is
+  #     text-only via cnn_dailymail; the multimodal encoders may stay
+  #     bf16 even after quantize.
+  #   expected_max_model_len: 262144
+  #   vllm:
+  #     tensor_parallel_size: 4    # baseline needs >=4 GPUs
+  #     max_model_len: 32768
+  #     dtype: bfloat16
+  #     gpu_memory_utilization: 0.9
+  #     trust_remote_code: true
+  #     enable_prefix_caching: true
 
 workloads:
   # Standard sweep at moderate context to stay within max_model_len above.
@@ -122,9 +130,9 @@ quant_recipe:
     seed: 0
 
 hardware:
-  name: b300-tp4
+  name: b300-tp2
   gpu: B300
   blackwell: true
-  num_gpus: 4         # bump to 4; the V2.5 entry uses TP=4 at baseline
+  num_gpus: 2
   default_tp_size: 2
   max_concurrency: 128
