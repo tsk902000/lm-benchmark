@@ -30,6 +30,15 @@ Those are gated behind the `[gpu]` / `[quant]` extras. mypy is configured in `py
 
 ## Runtime
 
+### `lmbench run` appears to hang with no output
+
+MiMo-V2.5 can spend a long time downloading weights, loading remote code,
+building CUDA kernels, or starting vLLM before the first benchmark artifact is
+written. The CLI now prints progress messages for plan load, env capture,
+server startup, perf cells, quality runs, quantization, verification, and report
+writing. If it is still silent, check whether the process is alive with `nvidia-smi`
+and inspect `results/<run>/env.json` or the vLLM process logs.
+
 ### `vllm serve` orphans EngineCore subprocesses on shutdown
 
 Known limitation. vLLM internally spawns its own subprocesses that may end up in their own session, so `os.killpg` on the script's pgid does not always reap them. The teardown will report success but `ps -ef | grep vllm` may show leftover `VLLM::EngineCore` rows. A future runner hardening pass should use `psutil` to walk the child tree explicitly; for now, manual `kill -9` is the fallback.

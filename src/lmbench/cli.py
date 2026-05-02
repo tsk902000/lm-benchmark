@@ -108,12 +108,16 @@ def run(
     """Execute the full pipeline: serve, bench, quantize, re-serve, bench, compare."""
     from lmbench.runner import run_plan_from_file
 
+    def progress(message: str) -> None:
+        console.print(f"[cyan]run[/] {message}")
+
     result = run_plan_from_file(
         plan,
         output_dir=output,
         skip_quality=skip_quality,
         skip_quantize=skip_quantize,
         skip_baseline=skip_baseline,
+        progress=progress,
     )
     console.print(
         f"[green]run[/] complete: plan={result.plan_name} "

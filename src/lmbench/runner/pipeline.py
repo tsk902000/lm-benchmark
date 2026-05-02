@@ -10,6 +10,7 @@ without GPU extras.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -44,6 +45,8 @@ from lmbench.utils.gpu import DeviceSummary, GPUSampler
 
 from .env import EnvCapture, capture_to_path
 
+ProgressCallback = Callable[[str], None]
+
 
 @dataclass(frozen=True)
 class ModelRunResult:
@@ -68,6 +71,11 @@ class PipelineResult:
     output_dir: Path
     env: EnvCapture
     models: tuple[ModelRunResult, ...]
+
+
+def _emit(progress: ProgressCallback | None, message: str) -> None:
+    if progress is not None:
+        progress(message)
 
 
 def _perf_summary_to_dict(result: PerfResult) -> dict[str, object]:
@@ -113,6 +121,7 @@ def _bench_perf_for_model(
     model: ModelEntry,
     handle: ServerHandle,
     output_dir: Path,
+    progress: ProgressCallback | None = None,
 ) -> tuple[PerfResult, ...]:
     """Run every (workload, concurrency) cell against a live server."""
     perf_dir = output_dir / "perf"
@@ -121,6 +130,13 @@ def _bench_perf_for_model(
         for expanded in expand_concurrency(workload):
             prompts = generate(expanded)
             concurrency = expanded.concurrency[0]
+            _emit(
+                progress,
+                (
+                    f"perf: model={model.name} workload={expanded.name} "
+                    f"concurrency={concurrency} prompts={expanded.num_prompts}"
+                ),
+            )
             result = run_workload(
                 base_url=handle.base_url,
                 served_model_name=handle.served_model_name,
@@ -129,9 +145,9 @@ def _bench_perf_for_model(
                 prompts=prompts,
                 gpu_sampler=GPUSampler(),
             )
-            _save_perf_result(result, perf_dir)
+            path = _save_perf_result(result, perf_dir)
+            _emit(progress, f"perf artifact written: {path}")
             results.append(result)
-    del model
     return tuple(results)
 
 
@@ -141,15 +157,25 @@ def _bench_quality_for_model(
     model: ModelEntry,
     handle: ServerHandle,
     output_dir: Path,
+    progress: ProgressCallback | None = None,
 ) -> QualityResult:
     """Run the eval suite against a live server."""
-    return run_quality(
+    _emit(
+        progress,
+        (
+            f"quality: model={model.name} suite={plan.eval_suite.name} "
+            f"tasks={len(plan.eval_suite.tasks) + len(plan.eval_suite.long_context)}"
+        ),
+    )
+    result = run_quality(
         suite=plan.eval_suite,
         model=model,
         base_url=handle.base_url,
         served_model_name=handle.served_model_name,
         output_dir=output_dir / "quality",
     )
+    _emit(progress, f"quality summary written: {output_dir / 'quality' / 'quality_summary.json'}")
+    return result
 
 
 def _build_comparison(
@@ -190,6 +216,7 @@ def _run_one_model(
     skip_quality: bool = False,
     skip_quantize: bool = False,
     skip_baseline: bool = False,
+    progress: ProgressCallback | None = None,
 ) -> ModelRunResult:
     """Execute the full per-model pipeline.
 
@@ -211,40 +238,69 @@ def _run_one_model(
     baseline_perf: tuple[PerfResult, ...] = ()
     baseline_quality: QualityResult | None = None
     if not skip_baseline:
+        _emit(
+            progress,
+            (
+                f"starting baseline vLLM server for {model.name}; "
+                "first download/load can take a while"
+            ),
+        )
         with serve_model(model) as handle:
+            _emit(progress, f"baseline server ready: {handle.base_url}")
             baseline_perf = _bench_perf_for_model(
-                plan=plan, model=model, handle=handle, output_dir=baseline_dir
+                plan=plan,
+                model=model,
+                handle=handle,
+                output_dir=baseline_dir,
+                progress=progress,
             )
             baseline_quality = (
                 None
                 if skip_quality
                 else _bench_quality_for_model(
-                    plan=plan, model=model, handle=handle, output_dir=baseline_dir
+                    plan=plan,
+                    model=model,
+                    handle=handle,
+                    output_dir=baseline_dir,
+                    progress=progress,
                 )
             )
+        _emit(progress, f"baseline stage complete for {model.name}")
+    else:
+        _emit(progress, f"baseline stage skipped for {model.name}")
 
     quantized_perf: tuple[PerfResult, ...] = ()
     quantized_quality: QualityResult | None = None
     quant_ckpt: QuantizedCheckpoint | None = None
     if not skip_quantize and plan.quant_recipe is not None:
+        _emit(progress, f"quantizing {model.name} with recipe={plan.quant_recipe.name}")
         quant_ckpt = quantize_to_nvfp4(
             model_entry=model, recipe=plan.quant_recipe
         )
+        _emit(progress, f"quantized checkpoint written: {quant_ckpt.output_dir}")
+        _emit(progress, f"verifying quantized checkpoint for {model.name}")
         verify = verify_checkpoint(checkpoint=quant_ckpt, base_entry=model)
         if not verify.ok:
             raise RuntimeError(
                 f"NVFP4 verification failed for {model.name}: {verify.reason}; "
                 f"completion={verify.completion!r}"
             )
+        _emit(progress, f"quantized checkpoint verified for {model.name}")
         quant_entry = ModelEntry(
             name=f"{model.name}-quant",
             hf_id=quant_ckpt.vllm_id,
             served_model_name=f"{model.name}-quant",
             vllm=model.vllm.model_copy(update={"quantization": "modelopt_fp4"}),
         )
+        _emit(progress, f"starting quantized vLLM server for {model.name}")
         with serve_model(quant_entry) as handle:
+            _emit(progress, f"quantized server ready: {handle.base_url}")
             quantized_perf = _bench_perf_for_model(
-                plan=plan, model=quant_entry, handle=handle, output_dir=quant_dir
+                plan=plan,
+                model=quant_entry,
+                handle=handle,
+                output_dir=quant_dir,
+                progress=progress,
             )
             if not skip_quality:
                 quantized_quality = _bench_quality_for_model(
@@ -252,8 +308,15 @@ def _run_one_model(
                     model=quant_entry,
                     handle=handle,
                     output_dir=quant_dir,
+                    progress=progress,
                 )
+        _emit(progress, f"quantized stage complete for {model.name}")
+    elif skip_quantize:
+        _emit(progress, f"quantized stage skipped for {model.name}")
+    else:
+        _emit(progress, f"no quant_recipe configured for {model.name}")
 
+    _emit(progress, f"building comparison report for {model.name}")
     comparison = _build_comparison(
         baseline_perf=baseline_perf,
         candidate_perf=quantized_perf,
@@ -262,6 +325,7 @@ def _run_one_model(
     )
     md_path = write_markdown(comparison, cmp_dir / "report.md", title=model.name)
     html_path = write_html(comparison, cmp_dir / "report.html", title=model.name)
+    _emit(progress, f"reports written: {md_path} and {html_path}")
     return ModelRunResult(
         model_name=model.name,
         baseline_perf=baseline_perf,
@@ -282,13 +346,18 @@ def run_plan(
     skip_quality: bool = False,
     skip_quantize: bool = False,
     skip_baseline: bool = False,
+    progress: ProgressCallback | None = None,
 ) -> PipelineResult:
     """Run a full `RunPlan` — every model gets its own subdir under output_dir."""
     out = output_dir or plan.output_dir
     out.mkdir(parents=True, exist_ok=True)
+    _emit(progress, f"output directory: {out}")
+    _emit(progress, "capturing environment")
     env = capture_to_path(out / "env.json")
+    _emit(progress, f"environment written: {out / 'env.json'}")
     model_results: list[ModelRunResult] = []
     for model in plan.models:
+        _emit(progress, f"model start: {model.name}")
         result = _run_one_model(
             plan=plan,
             model=model,
@@ -296,8 +365,10 @@ def run_plan(
             skip_quality=skip_quality,
             skip_quantize=skip_quantize,
             skip_baseline=skip_baseline,
+            progress=progress,
         )
         model_results.append(result)
+        _emit(progress, f"model complete: {model.name}")
     return PipelineResult(
         plan_name=plan.name,
         output_dir=out,
@@ -313,13 +384,17 @@ def run_plan_from_file(
     skip_quality: bool = False,
     skip_quantize: bool = False,
     skip_baseline: bool = False,
+    progress: ProgressCallback | None = None,
 ) -> PipelineResult:
     """Convenience: load a plan YAML and run it."""
+    _emit(progress, f"loading plan: {path}")
     plan = load_run_plan(path)
+    _emit(progress, f"plan loaded: {plan.name} models={len(plan.models)}")
     return run_plan(
         plan,
         output_dir=output_dir,
         skip_quality=skip_quality,
         skip_quantize=skip_quantize,
         skip_baseline=skip_baseline,
+        progress=progress,
     )
