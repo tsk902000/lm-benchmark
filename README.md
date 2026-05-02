@@ -53,6 +53,38 @@ uv run lmbench run --plan configs/run_mimo_v2_5_nvfp4.yaml
 
 > The `[gpu]` extra (vllm, lm-eval, transformers, pynvml) and `[quant]` extra (nvidia-modelopt) are Linux/CUDA-only. They are isolated in `pyproject.toml [project.optional-dependencies]` precisely so the dev path stays cross-platform.
 
+### Install vLLM
+
+Use a Linux CUDA environment for vLLM. Upstream vLLM does not support native Windows; use a Linux host or WSL2.
+
+The normal repo-managed path is:
+
+```bash
+uv sync --extra all
+uv run python -c "import torch, vllm; print('cuda=', torch.version.cuda); print('vllm=', vllm.__version__)"
+uv run vllm --help
+```
+
+If the resolved wheel does not match the B300 driver/CUDA stack, refresh vLLM inside the same `.venv` using vLLM's CUDA-aware installer:
+
+```bash
+uv pip install -U vllm --torch-backend=auto
+uv run python -c "import torch, vllm; print(torch.cuda.get_device_name(0)); print(vllm.__version__)"
+```
+
+For MiMo-V2.5 specifically, the current vLLM recipe says stable vLLM does not yet support the model and recommends the MiMo-tagged image:
+
+```bash
+docker pull vllm/vllm-openai:mimov25-cu129
+```
+
+To use that image with this harness, run `lmbench` inside an equivalent container environment, or install the matching MiMo/nightly vLLM wheel in the `.venv` before running:
+
+```bash
+uv run pytest --gpu
+uv run lmbench run --plan configs/run_mimo_v2_5_nvfp4.yaml
+```
+
 ### 2x B300 + MiMo-V2.5
 
 The public MiMo-V2.5 checkpoint is already FP8, so this is not a BF16 baseline-vs-NVFP4 run. On a 2x B300 host, try the public-FP8-checkpoint-vs-NVFP4 plan first:
