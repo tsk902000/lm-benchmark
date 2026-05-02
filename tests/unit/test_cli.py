@@ -97,6 +97,7 @@ def test_run_dispatches_to_pipeline(
         skip_quantize: bool = False,
         skip_baseline: bool = False,
         progress: object | None = None,
+        stream_server_logs: bool = False,
     ) -> PipelineResult:
         captured["path"] = path
         captured["output_dir"] = output_dir
@@ -104,6 +105,7 @@ def test_run_dispatches_to_pipeline(
         captured["skip_quantize"] = skip_quantize
         captured["skip_baseline"] = skip_baseline
         captured["progress"] = progress
+        captured["stream_server_logs"] = stream_server_logs
         env = EnvCapture(
             captured_at_unix=0.0,
             os="Linux",
@@ -130,6 +132,7 @@ def test_run_dispatches_to_pipeline(
     assert captured["skip_quality"] is True
     assert captured["skip_quantize"] is True
     assert captured["progress"] is not None
+    assert captured["stream_server_logs"] is True
 
 
 def test_unknown_command_fails() -> None:

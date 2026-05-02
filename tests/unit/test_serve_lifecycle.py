@@ -108,6 +108,13 @@ def test_start_vllm_server_writes_log_paths(tmp_path: Path) -> None:
     assert out.name == "opt.stdout.log"
 
 
+def test_start_vllm_server_streams_logs_to_parent() -> None:
+    handle = vs.start_vllm_server(_entry(), stream_logs=True)
+    assert handle.log_paths is None
+    fake = _FakePopen.instances[0]
+    assert fake.argv[:3] == ["vllm", "serve", "facebook/opt-125m"]
+
+
 def test_stop_vllm_server_terminates_cleanly() -> None:
     handle = vs.start_vllm_server(_entry())
     rc = vs.stop_vllm_server(handle, timeout_s=1.0)

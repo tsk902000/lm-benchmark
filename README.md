@@ -109,6 +109,7 @@ This TP=2 setup is memory-plausible but not validated in this repo yet; the curr
 | `uv run mypy` | Strict type checking. |
 | `uv run lmbench --help` | CLI help. |
 | `uv run lmbench run --plan <plan.yaml>` | Run the full pipeline. |
+| `uv run lmbench run --plan <plan.yaml> --no-stream-vllm-logs` | Run quietly without vLLM download/startup logs in the terminal. |
 | `uv run lmbench run --plan <plan.yaml> --skip-quality` | Skip lm-eval; perf only. |
 | `uv run lmbench run --plan <plan.yaml> --skip-quantize` | Baseline only; no NVFP4 stage. |
 | `uv run lmbench run --plan <plan.yaml> --skip-baseline` | NVFP4 only; for hosts that can't fit the baseline checkpoint. |

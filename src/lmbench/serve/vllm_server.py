@@ -105,6 +105,7 @@ def start_vllm_server(
     executable: str = "vllm",
     env: dict[str, str] | None = None,
     log_dir: Path | None = None,
+    stream_logs: bool = False,
 ) -> ServerHandle:
     """Spawn `vllm serve` as a subprocess in its own process group.
 
@@ -123,10 +124,10 @@ def start_vllm_server(
 
     argv = build_serve_args(entry, host=host, port=port, executable=resolved)
 
-    stdout_target: int = subprocess.DEVNULL
-    stderr_target: int = subprocess.DEVNULL
+    stdout_target: int | None = None if stream_logs else subprocess.DEVNULL
+    stderr_target: int | None = None if stream_logs else subprocess.DEVNULL
     log_paths: tuple[Path, Path] | None = None
-    if log_dir is not None:
+    if log_dir is not None and not stream_logs:
         log_dir.mkdir(parents=True, exist_ok=True)
         name = served_model_name(entry).replace("/", "_")
         out_path = log_dir / f"{name}.stdout.log"

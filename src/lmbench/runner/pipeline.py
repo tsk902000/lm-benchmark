@@ -217,6 +217,7 @@ def _run_one_model(
     skip_quantize: bool = False,
     skip_baseline: bool = False,
     progress: ProgressCallback | None = None,
+    stream_server_logs: bool = False,
 ) -> ModelRunResult:
     """Execute the full per-model pipeline.
 
@@ -245,7 +246,9 @@ def _run_one_model(
                 "first download/load can take a while"
             ),
         )
-        with serve_model(model) as handle:
+        if stream_server_logs:
+            _emit(progress, "vLLM stdout/stderr will stream here during startup")
+        with serve_model(model, stream_logs=stream_server_logs) as handle:
             _emit(progress, f"baseline server ready: {handle.base_url}")
             baseline_perf = _bench_perf_for_model(
                 plan=plan,
@@ -293,7 +296,9 @@ def _run_one_model(
             vllm=model.vllm.model_copy(update={"quantization": "modelopt_fp4"}),
         )
         _emit(progress, f"starting quantized vLLM server for {model.name}")
-        with serve_model(quant_entry) as handle:
+        if stream_server_logs:
+            _emit(progress, "quantized vLLM stdout/stderr will stream here")
+        with serve_model(quant_entry, stream_logs=stream_server_logs) as handle:
             _emit(progress, f"quantized server ready: {handle.base_url}")
             quantized_perf = _bench_perf_for_model(
                 plan=plan,
@@ -347,6 +352,7 @@ def run_plan(
     skip_quantize: bool = False,
     skip_baseline: bool = False,
     progress: ProgressCallback | None = None,
+    stream_server_logs: bool = False,
 ) -> PipelineResult:
     """Run a full `RunPlan` — every model gets its own subdir under output_dir."""
     out = output_dir or plan.output_dir
@@ -366,6 +372,7 @@ def run_plan(
             skip_quantize=skip_quantize,
             skip_baseline=skip_baseline,
             progress=progress,
+            stream_server_logs=stream_server_logs,
         )
         model_results.append(result)
         _emit(progress, f"model complete: {model.name}")
@@ -385,6 +392,7 @@ def run_plan_from_file(
     skip_quantize: bool = False,
     skip_baseline: bool = False,
     progress: ProgressCallback | None = None,
+    stream_server_logs: bool = False,
 ) -> PipelineResult:
     """Convenience: load a plan YAML and run it."""
     _emit(progress, f"loading plan: {path}")
@@ -397,4 +405,5 @@ def run_plan_from_file(
         skip_quantize=skip_quantize,
         skip_baseline=skip_baseline,
         progress=progress,
+        stream_server_logs=stream_server_logs,
     )

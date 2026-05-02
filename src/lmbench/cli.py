@@ -104,6 +104,17 @@ def run(
             ),
         ),
     ] = False,
+    stream_vllm_logs: Annotated[
+        bool,
+        typer.Option(
+            "--stream-vllm-logs/--no-stream-vllm-logs",
+            help=(
+                "Stream vLLM stdout/stderr to the terminal during server "
+                "startup and serving. Leave this on to see Hugging Face "
+                "download progress."
+            ),
+        ),
+    ] = True,
 ) -> None:
     """Execute the full pipeline: serve, bench, quantize, re-serve, bench, compare."""
     from lmbench.runner import run_plan_from_file
@@ -118,6 +129,7 @@ def run(
         skip_quantize=skip_quantize,
         skip_baseline=skip_baseline,
         progress=progress,
+        stream_server_logs=stream_vllm_logs,
     )
     console.print(
         f"[green]run[/] complete: plan={result.plan_name} "

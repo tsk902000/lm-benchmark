@@ -31,6 +31,7 @@ def serve_model(
     executable: str = "vllm",
     env: dict[str, str] | None = None,
     log_dir: Path | None = None,
+    stream_logs: bool = False,
     startup_timeout_s: float = 600.0,
     shutdown_timeout_s: float = 30.0,
 ) -> Iterator[ServerHandle]:
@@ -47,6 +48,7 @@ def serve_model(
         executable=executable,
         env=env,
         log_dir=log_dir,
+        stream_logs=stream_logs,
     )
     try:
         wait_for_ready(

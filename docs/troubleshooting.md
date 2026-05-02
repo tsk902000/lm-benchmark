@@ -34,10 +34,12 @@ Those are gated behind the `[gpu]` / `[quant]` extras. mypy is configured in `py
 
 MiMo-V2.5 can spend a long time downloading weights, loading remote code,
 building CUDA kernels, or starting vLLM before the first benchmark artifact is
-written. The CLI now prints progress messages for plan load, env capture,
-server startup, perf cells, quality runs, quantization, verification, and report
-writing. If it is still silent, check whether the process is alive with `nvidia-smi`
-and inspect `results/<run>/env.json` or the vLLM process logs.
+written. The CLI prints progress messages for plan load, env capture, server
+startup, perf cells, quality runs, quantization, verification, and report
+writing. It also streams vLLM stdout/stderr by default so Hugging Face download
+progress can show in the terminal. Use `--no-stream-vllm-logs` for quiet runs.
+If it is still silent, check whether the process is alive with `nvidia-smi` and
+inspect `results/<run>/env.json`.
 
 ### `vllm serve` orphans EngineCore subprocesses on shutdown
 
